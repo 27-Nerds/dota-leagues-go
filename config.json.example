@@ -1,0 +1,11 @@
+{
+    "server": {
+        "address": ":1323"
+      },
+      "database": {
+          "url": "http://localhost:8529",
+          "user": "login",
+          "pass": "pass",
+          "name": "dota_leagues"
+      }
+}

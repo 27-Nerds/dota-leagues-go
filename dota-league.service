@@ -1,0 +1,15 @@
+[Unit]
+Description=dota_league web service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/deploy/work/dota_league
+ExecStart=/home/deploy/work/dota_league/dota_league
+Restart=on-failure
+RestartSec=30
+# Setuid/Setgid
+User=deploy
+Group=deploy
+
+[Install]
+WantedBy=multi-user.target
