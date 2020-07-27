@@ -63,7 +63,7 @@ func (ldr *LeagueDetailsRepository) ExistsByID(id int) (bool, error) {
 // GetAllActive returns all leagues wgere end_timestamp is greater than current date
 func (ldr *LeagueDetailsRepository) GetAllActive() (*[]model.LeagueDetails, error) {
 
-	query := "FOR d IN league_details FILTER d.end_timestamp >= @today || d.is_live == true SORT d.tier DESC, d.is_live DESC, d.total_prize_pool DESC, d.start_timestamp DESC RETURN d"
+	query := "FOR d IN league_details LET strt = ABS(d.start_timestamp - @today) FILTER d.end_timestamp >= @today || d.is_live == true SORT d.tier DESC, d.is_live DESC, strt, d.total_prize_pool DESC RETURN d"
 	bindVars := map[string]interface{}{
 		"today": time.Now().Unix(),
 	}
