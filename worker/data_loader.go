@@ -57,7 +57,6 @@ func (dl *DataLoader) run() {
 			go dl.performLeaguesUpdate()
 
 		case <-dl.GamesTicker.C:
-
 			go dl.performGamesUpdate()
 
 		case leagueID := <-dl.LoadLeagueDetails:
@@ -70,7 +69,6 @@ func (dl *DataLoader) run() {
 			}
 			n++
 
-			log.Printf("Loading league details, %d", leagueID)
 			err := dl.storeLeagueDetails(leagueID, sleepTime)
 			if err != nil {
 				log.Printf("StoreLeagueDetails error: %s", err)

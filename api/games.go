@@ -11,8 +11,9 @@ func LoadLiveGames() (*model.LiveGames, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer body.Close()
 	liveGamesJSON := model.LiveGames{}
-	err = json.Unmarshal(body, &liveGamesJSON)
+	err = json.NewDecoder(body).Decode(&liveGamesJSON)
 	if err != nil {
 		return nil, err
 	}

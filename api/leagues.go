@@ -17,8 +17,10 @@ func LoadLeagues() (*model.LeagueData, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer body.Close()
+
 	leagueDataJSON := model.LeagueData{}
-	err = json.Unmarshal(body, &leagueDataJSON)
+	err = json.NewDecoder(body).Decode(&leagueDataJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -33,10 +35,12 @@ func LoadLeagueDetails(leagueID int) (*model.LeagueDetailsData, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer body.Close()
 
 	leaguesDetailsJSON := model.LeagueDetailsData{}
 
-	err = json.Unmarshal(body, &leaguesDetailsJSON)
+	err = json.NewDecoder(body).Decode(&leaguesDetailsJSON)
+
 	if err != nil {
 		return nil, err
 	}
@@ -63,10 +67,12 @@ func DownloadImageIfNotExist(sourceURL string, relativeDestPath string, imageNam
 		if err != nil {
 			return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 		}
+
+		defer resp.Body.Close()
+
 		if resp.StatusCode != 200 {
 			return &e.Error{Code: e.ENOTFOUND, Op: op}
 		}
-		defer resp.Body.Close()
 
 		os.MkdirAll(path, os.ModePerm)
 		out, err := os.Create(fullPathWithName)

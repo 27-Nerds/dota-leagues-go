@@ -1,12 +1,12 @@
 package api
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 )
 
-func doRequest(url string) ([]byte, error) {
+func doRequest(url string) (io.ReadCloser, error) {
 	httpsClient := http.Client{
 		Timeout: time.Second * 5, // Timeout after 2 seconds
 	}
@@ -23,15 +23,5 @@ func doRequest(url string) ([]byte, error) {
 		return nil, err
 	}
 
-	if res.Body != nil {
-		defer res.Body.Close()
-	}
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return body, nil
-
+	return res.Body, nil
 }

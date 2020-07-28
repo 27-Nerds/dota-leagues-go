@@ -85,6 +85,7 @@ func (dl *DataLoader) storeLeagues() error {
 			return err
 		}
 	}
+
 	return nil
 }
 
