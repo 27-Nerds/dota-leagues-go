@@ -66,7 +66,8 @@ func main() {
 	e.Static("/", "./public")
 
 	leaguesHandler := handler.NewLeaguesHandler(&leagueDetailsRepository)
-	delivery.NewLeaguesDelivery(e, &leaguesHandler)
+	gamesHandler := handler.NewGameHandler(&gameRepository)
+	delivery.NewLeaguesDelivery(e, &leaguesHandler, &gamesHandler)
 
 	// Start server
 	e.Logger.Fatal(e.Start(viper.GetString(`server.address`)))

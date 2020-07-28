@@ -12,15 +12,18 @@ import (
 // LeaguesDelivery struct
 type LeaguesDelivery struct {
 	LeaguesHandler *handler.LeaguesHandlerInterface
+	GamesHandler   *handler.GamesHandlerInterface
 }
 
 // NewLeaguesDelivery adds routes to echo
-func NewLeaguesDelivery(e *echo.Echo, lh *handler.LeaguesHandlerInterface) {
+func NewLeaguesDelivery(e *echo.Echo, lh *handler.LeaguesHandlerInterface, gh *handler.GamesHandlerInterface) {
 	leaguesDelivery := &LeaguesDelivery{
 		LeaguesHandler: lh,
+		GamesHandler:   gh,
 	}
 
 	e.GET("/leagues", leaguesDelivery.getAllActive)
+	e.GET("/leagues/:id/live-games", leaguesDelivery.getLiveGames)
 }
 
 func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
@@ -31,4 +34,18 @@ func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, leagues)
+}
+
+func (ld *LeaguesDelivery) getLiveGames(c echo.Context) error {
+	id := c.Param("id")
+	games, err := (*ld.GamesHandler).GetLiveLeagueGames(id)
+	if e.IsNotFound(err) {
+		log.Printf("getAllActive Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+		return echo.NewHTTPError(http.StatusNotFound, "League Not Found Or No Live Games At the Moment")
+	} else if err != nil {
+		log.Printf("getAllActive Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
+	}
+
+	return c.JSON(http.StatusOK, games)
 }
