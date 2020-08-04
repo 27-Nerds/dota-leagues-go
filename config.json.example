@@ -1,11 +1,31 @@
 {
-    "server": {
-        "address": ":1323"
-      },
-      "database": {
-          "url": "http://localhost:8529",
-          "user": "login",
-          "pass": "pass",
-          "name": "dota_leagues"
-      }
+    "development": {
+        "server": {
+            "address": ":1323"
+        },
+        "cors": {
+            "origin": "*"
+        },
+        "database": {
+            "url": "http://localhost:8529",
+            "user": "login",
+            "pass": "pass",
+            "name": "dota_leagues"
+        }
+    },
+
+    "production": {
+        "server": {
+            "address": ":1323"
+        },
+        "cors": {
+            "origin": "https://dota-leagues.27n.gg"
+        },
+        "database": {
+            "url": "http://localhost:8529",
+            "user": "login",
+            "pass": "pass",
+            "name": "dota_leagues"
+        }
+    }
 }
