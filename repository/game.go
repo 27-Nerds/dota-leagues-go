@@ -23,21 +23,9 @@ func NewGameRepository(Conn *db.Interface) GameRepositoryInterface {
 
 // ExistsByID - check wether record exists in the DB
 func (gr *GameRepository) ExistsByID(id int64) (bool, error) {
-	query := "RETURN LENGTH(FOR d IN games FILTER d._key == @id LIMIT 1 RETURN true) > 0"
-	bindVars := map[string]interface{}{
-		"id": strconv.FormatInt(id, 10),
-	}
 
-	var exists bool
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, err := (*gr.Conn).Query(ctx, query, bindVars, &exists)
-	if e.IsNotFound(err) {
-		// table not found. no need to crash
-		return false, nil
-
-	} else if err != nil {
+	exists, err := existsInColByID(gr.Conn, "games", strconv.FormatInt(id, 10))
+	if err != nil {
 		return false, &e.Error{Op: "GameRepository.ExistsByID", Err: err}
 	}
 

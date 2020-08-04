@@ -37,23 +37,11 @@ func (ldr *LeagueDetailsRepository) Store(ld *model.LeagueDetails) error {
 	return nil
 }
 
-// ExistsByID check if record exist in the db
+// ExistsByID - check wether record exists in the DB
 func (ldr *LeagueDetailsRepository) ExistsByID(id int) (bool, error) {
-	query := "RETURN LENGTH(FOR d IN league_details FILTER d._key == @id LIMIT 1 RETURN true) > 0"
-	bindVars := map[string]interface{}{
-		"id": strconv.Itoa(id),
-	}
 
-	var exists bool
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, err := (*ldr.Conn).Query(ctx, query, bindVars, &exists)
-	if e.IsNotFound(err) {
-		// table not found. no need to crash
-		return false, nil
-
-	} else if err != nil {
+	exists, err := existsInColByID(ldr.Conn, "league_details", strconv.Itoa(id))
+	if err != nil {
 		return false, &e.Error{Op: "LeagueDetailsRepository.ExistsByID", Err: err}
 	}
 
