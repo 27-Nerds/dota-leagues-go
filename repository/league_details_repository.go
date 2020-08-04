@@ -5,6 +5,7 @@ import (
 	"dota_league/db"
 	e "dota_league/error"
 	"dota_league/model"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -13,12 +14,16 @@ import (
 
 // LeagueDetailsRepository repository struct
 type LeagueDetailsRepository struct {
-	Conn *db.Interface
+	Conn           *db.Interface
+	activityFilter string
 }
 
 // NewLeagueDetailsRepository creates new struct
-func NewLeagueDetailsRepository(Conn *db.Interface) LeagueDetailsRepositoryInterface {
-	return &LeagueDetailsRepository{Conn}
+func NewLeagueDetailsRepository(conn *db.Interface) LeagueDetailsRepositoryInterface {
+	return &LeagueDetailsRepository{
+		Conn:           conn,
+		activityFilter: "FILTER (d.end_timestamp >= @today && d.status != 5) || d.is_live == true SORT d.tier DESC, d.is_live DESC, ABS(d.start_timestamp - @today), d.total_prize_pool DESC",
+	}
 }
 
 // Store store leagueDetails model in db
@@ -51,10 +56,83 @@ func (ldr *LeagueDetailsRepository) ExistsByID(id int) (bool, error) {
 // GetAllActive returns all leagues wgere end_timestamp is greater than current date
 func (ldr *LeagueDetailsRepository) GetAllActive() (*[]model.LeagueDetails, error) {
 
-	query := "FOR d IN league_details LET strt = ABS(d.start_timestamp - @today) FILTER (d.end_timestamp >= @today && d.status != 5) || d.is_live == true SORT d.tier DESC, d.is_live DESC, strt, d.total_prize_pool DESC RETURN d"
+	query := fmt.Sprintf("FOR d IN league_details %s RETURN d", ldr.activityFilter)
 	bindVars := map[string]interface{}{
 		"today": time.Now().Unix(),
 	}
+
+	leagues, err := ldr.queryAll(query, bindVars)
+	if err != nil {
+		return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
+	}
+
+	return leagues, nil
+}
+
+// GetAllActiveForTiers returns all leagues wgere end_timestamp is greater than current date
+func (ldr *LeagueDetailsRepository) GetAllActiveForTiers(tiers []int) (*[]model.LeagueDetails, error) {
+
+	query := fmt.Sprintf("FOR d IN league_details FILTER d.tier in @tier %s RETURN d", ldr.activityFilter)
+	bindVars := map[string]interface{}{
+		"today": time.Now().Unix(),
+		"tier":  tiers,
+	}
+
+	leagues, err := ldr.queryAll(query, bindVars)
+	if err != nil {
+		return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActiveForTiers", Err: err}
+	}
+
+	return leagues, nil
+}
+
+// UpdateLiveStatus you can set league as active or not
+func (ldr *LeagueDetailsRepository) UpdateLiveStatus(key int, newStatus bool) error {
+	patch := map[string]interface{}{
+		"is_live": newStatus,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := (*ldr.Conn).Update(ctx, "league_details", strconv.Itoa(key), patch)
+	if err != nil {
+		return &e.Error{Op: "LeagueDetailsRepository.UpdateLiveStatus", Err: err}
+	}
+
+	return nil
+}
+
+// UpdateTotalPrizePool set new prize pool for given league
+func (ldr *LeagueDetailsRepository) UpdateTotalPrizePool(key int, prizePool int) error {
+	patch := map[string]interface{}{
+		"total_prize_pool": prizePool,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := (*ldr.Conn).Update(ctx, "league_details", strconv.Itoa(key), patch)
+	if err != nil {
+		return &e.Error{Op: "LeagueDetailsRepository.UpdateTotalPrizePool", Err: err}
+	}
+
+	return nil
+}
+
+// SetAllAsNotLive set all leagues as inactive
+func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	query := "FOR u IN league_details UPDATE u WITH { u.is_live: false } IN league_details"
+	err := (*ldr.Conn).DoQuery(ctx, query)
+	if err != nil {
+		return &e.Error{Op: "LeagueDetailsRepository.SetAllAsNotLive", Err: err}
+	}
+
+	return nil
+}
+
+// queryAll performs given query and returs array of serialized objects
+func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]interface{}) (*[]model.LeagueDetails, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -78,34 +156,4 @@ func (ldr *LeagueDetailsRepository) GetAllActive() (*[]model.LeagueDetails, erro
 	}
 
 	return &leagues, nil
-
-}
-
-// UpdateLiveStatus you can set league as active or not
-func (ldr *LeagueDetailsRepository) UpdateLiveStatus(key int, newStatus bool) error {
-	patch := map[string]interface{}{
-		"is_live": newStatus,
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	err := (*ldr.Conn).Update(ctx, "league_details", strconv.Itoa(key), patch)
-	if err != nil {
-		return &e.Error{Op: "LeagueDetailsRepository.UpdateLiveStatus", Err: err}
-	}
-
-	return nil
-}
-
-// SetAllAsNotLive set all leagues as inactive
-func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	query := "FOR u IN league_details UPDATE u WITH { u.is_live: false } IN league_details"
-	err := (*ldr.Conn).DoQuery(ctx, query)
-	if err != nil {
-		return &e.Error{Op: "LeagueDetailsRepository.SetAllAsNotLive", Err: err}
-	}
-
-	return nil
 }
