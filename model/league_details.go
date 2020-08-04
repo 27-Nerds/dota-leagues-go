@@ -36,3 +36,18 @@ type LeagueDetails struct {
 	IsLive             bool   `json:"is_live"`
 	DbKey              string `json:"_key,omitempty"`
 }
+
+// LeagueDetailsResponse is used to generate REST response
+type LeagueDetailsResponse struct {
+	ID             int    `json:"league_id"`
+	Name           string `json:"name"`
+	Tier           int    `json:"tier"`
+	Region         int    `json:"region"`
+	URL            string `json:"url"`
+	Description    string `json:"description"`
+	StartTimestamp int    `json:"start_timestamp"`
+	EndTimestamp   int    `json:"end_timestamp"`
+	Status         int    `json:"status"`
+	TotalPrizePool int    `json:"total_prize_pool"`
+	IsLive         bool   `json:"is_live"`
+}
