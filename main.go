@@ -17,11 +17,16 @@ import (
 )
 
 func init() {
+	//set default values
+	viper.SetDefault("cors.origin", "*")
+
+	//read the cofig file
 	viper.SetConfigFile(`config.json`)
 	err := viper.ReadInConfig()
 	if err != nil {
 		panic(err)
 	}
+
 }
 
 func dbConnection() db.Interface {
@@ -58,7 +63,7 @@ func main() {
 
 	//CORS
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
+		AllowOrigins: []string{viper.GetString(`cors.origin`)},
 		AllowMethods: []string{echo.GET, echo.HEAD},
 	}))
 
