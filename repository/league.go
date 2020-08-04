@@ -58,21 +58,9 @@ func (lr *LeagueRepository) StoreAll(leagues *[]model.League) error {
 
 // ExistsByID - check wether record exists in the DB
 func (lr *LeagueRepository) ExistsByID(id int) (bool, error) {
-	query := "RETURN LENGTH(FOR d IN leagues FILTER d._key == @id LIMIT 1 RETURN true) > 0"
-	bindVars := map[string]interface{}{
-		"id": strconv.Itoa(id),
-	}
 
-	var exists bool
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, err := (*lr.Conn).Query(ctx, query, bindVars, &exists)
-	if e.IsNotFound(err) {
-		// table not found. no need to crash
-		return false, nil
-
-	} else if err != nil {
+	exists, err := existsInColByID(lr.Conn, "leagues", strconv.Itoa(id))
+	if err != nil {
 		return false, &e.Error{Op: "LeagueRepository.ExistsByID", Err: err}
 	}
 
