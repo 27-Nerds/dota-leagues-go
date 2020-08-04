@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -16,6 +18,16 @@ import (
 	"github.com/spf13/viper"
 )
 
+// ENVIRONMENT - Global variable that stores current envorinment
+var ENVIRONMENT = "development"
+
+// GetConfigStr add current env to viper config query
+func GetConfigStr(key string) string {
+	key = fmt.Sprintf("%s.%s", ENVIRONMENT, key)
+
+	return viper.GetString(key)
+}
+
 func init() {
 	//set default values
 	viper.SetDefault("cors.origin", "*")
@@ -26,12 +38,20 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
 }
 
 func dbConnection() db.Interface {
-	log.Printf("cs: %+v, %+v, %+v, %+v", viper.GetString(`database.url`), viper.GetString(`database.user`), viper.GetString(`database.pass`), viper.GetString(`database.name`))
-	db, err := db.Connect(context.Background(), viper.GetString(`database.url`), viper.GetString(`database.user`), viper.GetString(`database.pass`), viper.GetString(`database.name`))
+	log.Printf("cs: %+v, %+v, %+v, %+v",
+		GetConfigStr(`database.url`),
+		GetConfigStr(`database.user`),
+		GetConfigStr(`database.pass`),
+		GetConfigStr(`database.name`))
+
+	db, err := db.Connect(context.Background(),
+		GetConfigStr(`database.url`),
+		GetConfigStr(`database.user`),
+		GetConfigStr(`database.pass`),
+		GetConfigStr(`database.name`))
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
@@ -41,6 +61,16 @@ func dbConnection() db.Interface {
 }
 
 func main() {
+
+	prodFlag := flag.Bool("production", false, "run in production mode")
+	flag.Parse()
+
+	if *prodFlag {
+		ENVIRONMENT = "production"
+	}
+
+	log.Printf("Current Environment: %s", ENVIRONMENT)
+
 	db := dbConnection()
 	leagueRepository := repository.NewLeagueRepository(&db)
 	leagueDetailsRepository := repository.NewLeagueDetailsRepository(&db)
@@ -63,7 +93,7 @@ func main() {
 
 	//CORS
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{viper.GetString(`cors.origin`)},
+		AllowOrigins: []string{GetConfigStr(`cors.origin`)},
 		AllowMethods: []string{echo.GET, echo.HEAD},
 	}))
 
@@ -75,5 +105,5 @@ func main() {
 	delivery.NewLeaguesDelivery(e, &leaguesHandler, &gamesHandler)
 
 	// Start server
-	e.Logger.Fatal(e.Start(viper.GetString(`server.address`)))
+	e.Logger.Fatal(e.Start(GetConfigStr(`server.address`)))
 }
