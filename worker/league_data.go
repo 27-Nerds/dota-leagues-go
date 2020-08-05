@@ -145,6 +145,9 @@ func (dl *DataLoader) storeLeagueDetails(leagueID int, sleepTime time.Duration) 
 		leagueDetails.Details.BasePrizePool = leagueDetails.PrizePool.BasePrizePool
 		leagueDetails.Details.TotalPrizePool = leagueDetails.PrizePool.TotalPrizePool
 
+		// add stream info
+		leagueDetails.Details.Streams = leagueDetails.Streams
+
 		err = (*dl.LeagueDetailsRepository).Store(&leagueDetails.Details)
 		if err != nil {
 			return err
