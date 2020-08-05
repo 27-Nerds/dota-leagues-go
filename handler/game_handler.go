@@ -36,7 +36,6 @@ func (gh *GameHandler) GetLiveLeagueGames(leagueID string) (*[]model.GameRespons
 	}
 
 	//convert model.Game to model.GameResponse
-
 	for _, gameFromDb := range *gamesFromDb {
 		g := model.GameResponse{
 			LeagueID:   gameFromDb.LeagueID,
