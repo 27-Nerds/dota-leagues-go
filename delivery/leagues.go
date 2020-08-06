@@ -22,8 +22,8 @@ func NewLeaguesDelivery(e *echo.Echo, lh *handler.LeaguesHandlerInterface, gh *h
 		GamesHandler:   gh,
 	}
 
-	e.GET("/leagues", leaguesDelivery.getAllActive)
-	e.GET("/leagues/:id/live-games", leaguesDelivery.getLiveGames)
+	e.GET("/leagues", leaguesDelivery.getAllActive, IPRateLimit())
+	e.GET("/leagues/:id/live-games", leaguesDelivery.getLiveGames, IPRateLimit())
 }
 
 func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
