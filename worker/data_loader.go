@@ -81,5 +81,6 @@ func (dl *DataLoader) run() {
 
 func (dl *DataLoader) stop() {
 	dl.LeaguesTicker.Stop()
+	dl.GamesTicker.Stop()
 	close(dl.LoadLeagueDetails)
 }

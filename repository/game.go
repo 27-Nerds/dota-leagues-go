@@ -117,7 +117,7 @@ func (gr *GameRepository) queryAll(query string, bindVars map[string]interface{}
 		if driver.IsNoMoreDocuments(err) {
 			break
 		} else if err != nil {
-			return nil, err
+			return nil, &e.Error{Op: "GameRepository.queryAll", Err: err}
 		}
 		games = append(games, doc)
 	}

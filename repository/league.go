@@ -92,6 +92,7 @@ func (lr *LeagueRepository) GetByDateRange(startDate int64, endDate int64) (*[]m
 			break
 		} else if err != nil {
 			// handle other errors
+			return nil, &e.Error{Op: "LeagueRepository.GetByDateRange", Err: err}
 		}
 		leagues = append(leagues, doc)
 	}
@@ -156,7 +157,7 @@ func (lr *LeagueRepository) GetAllActive() (*[]model.LeagueDetails, error) {
 		if driver.IsNoMoreDocuments(err) {
 			break
 		} else if err != nil {
-			return nil, err
+			return nil, &e.Error{Op: "LeagueRepository.GetAllActive", Err: err}
 		}
 		leagues = append(leagues, doc)
 	}

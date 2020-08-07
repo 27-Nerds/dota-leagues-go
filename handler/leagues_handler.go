@@ -1,6 +1,7 @@
 package handler
 
 import (
+	e "dota_league/error"
 	"dota_league/model"
 	"dota_league/repository"
 )
@@ -20,7 +21,7 @@ func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetails, error) {
 
 	leagues, err := (*lh.LeagueDetailsRepository).GetAllActive()
 	if err != nil {
-		return nil, err
+		return nil, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
 	}
 
 	return leagues, nil

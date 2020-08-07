@@ -13,16 +13,17 @@ import (
 
 // LoadLeagues loads json from the Dota API
 func LoadLeagues() (*model.LeagueData, error) {
+	op := "api.LoadLeagues"
 	body, err := doRequest("https://www.dota2.com/webapi/IDOTA2League/GetLeagueInfoList/v001?")
 	if err != nil {
-		return nil, err
+		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 	defer body.Close()
 
 	leagueDataJSON := model.LeagueData{}
 	err = json.NewDecoder(body).Decode(&leagueDataJSON)
 	if err != nil {
-		return nil, err
+		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
 	return &leagueDataJSON, nil
@@ -30,10 +31,11 @@ func LoadLeagues() (*model.LeagueData, error) {
 
 // LoadLeagueDetails loads json from the Dota API for the given leagueID
 func LoadLeagueDetails(leagueID int) (*model.LeagueDetailsData, error) {
+	op := "api.LoadLeagueDetails"
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2League/GetLeagueData/v001?league_id=%d", leagueID)
 	body, err := doRequest(url)
 	if err != nil {
-		return nil, err
+		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 	defer body.Close()
 
@@ -42,7 +44,7 @@ func LoadLeagueDetails(leagueID int) (*model.LeagueDetailsData, error) {
 	err = json.NewDecoder(body).Decode(&leaguesDetailsJSON)
 
 	if err != nil {
-		return nil, err
+		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
 	return &leaguesDetailsJSON, nil
