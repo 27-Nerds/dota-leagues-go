@@ -17,12 +17,32 @@ func NewLeaguesHandler(ldr *repository.LeagueDetailsRepositoryInterface) Leagues
 }
 
 // GetAllActive performs DB query and return results
-func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetails, error) {
+func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetailsResponse, error) {
 
-	leagues, err := (*lh.LeagueDetailsRepository).GetAllActive()
+	leagueDetailsResponse := []model.LeagueDetailsResponse{}
+
+	leaguesFromDb, err := (*lh.LeagueDetailsRepository).GetAllActive()
 	if err != nil {
 		return nil, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
 	}
 
-	return leagues, nil
+	//convert model.Game to model.GameResponse
+	for _, leagueFromDb := range *leaguesFromDb {
+		l := model.LeagueDetailsResponse{
+			ID:             leagueFromDb.ID,
+			Name:           leagueFromDb.Name,
+			Tier:           leagueFromDb.Tier,
+			Region:         leagueFromDb.Region,
+			URL:            leagueFromDb.URL,
+			Description:    leagueFromDb.Description,
+			StartTimestamp: leagueFromDb.StartTimestamp,
+			EndTimestamp:   leagueFromDb.EndTimestamp,
+			Status:         leagueFromDb.Status,
+			TotalPrizePool: leagueFromDb.TotalPrizePool,
+			IsLive:         leagueFromDb.IsLive,
+		}
+		leagueDetailsResponse = append(leagueDetailsResponse, l)
+	}
+
+	return &leagueDetailsResponse, nil
 }

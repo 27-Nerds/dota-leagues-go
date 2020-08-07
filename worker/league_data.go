@@ -30,6 +30,37 @@ func (dl *DataLoader) downloadLeagueImage(leagueID int) error {
 	return nil
 }
 
+func (dl *DataLoader) performPrizePoolUpdate() error {
+	log.Println("refreshing prizepools...")
+
+	// update prizepool only for active tier 4 and 5 leagues
+	leagues, err := (*dl.LeagueDetailsRepository).GetAllActiveForTiers([]int{4, 5})
+
+	for _, league := range *leagues {
+
+		time.Sleep(10 * time.Second)
+
+		prizePool, err := api.LoadPrizePool(league.ID)
+		if err != nil {
+			log.Printf("error while performPrizePoolUpdate - LoadPrizePool: %v", err)
+			return err
+		}
+		// do not store 0 prizepool
+		if prizePool.PrizePool == 0 {
+			log.Printf("0 prizepool recieved for league %d", league.ID)
+			return nil
+		}
+
+		err = (*dl.LeagueDetailsRepository).UpdateTotalPrizePool(league.ID, prizePool.PrizePool)
+		if err != nil {
+			log.Printf("error while performPrizePoolUpdate - UpdateTotalPrizePool: %v", err)
+			return err
+		}
+	}
+
+	return err
+}
+
 func (dl *DataLoader) performLeaguesUpdate() error {
 
 	// Update leagues in the DB
@@ -113,6 +144,9 @@ func (dl *DataLoader) storeLeagueDetails(leagueID int, sleepTime time.Duration) 
 		// add pricepool info to details struct
 		leagueDetails.Details.BasePrizePool = leagueDetails.PrizePool.BasePrizePool
 		leagueDetails.Details.TotalPrizePool = leagueDetails.PrizePool.TotalPrizePool
+
+		// add stream info
+		leagueDetails.Details.Streams = leagueDetails.Streams
 
 		err = (*dl.LeagueDetailsRepository).Store(&leagueDetails.Details)
 		if err != nil {
