@@ -27,13 +27,18 @@ func NewLeaguesDelivery(e *echo.Echo, lh *handler.LeaguesHandlerInterface, gh *h
 }
 
 func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
-	leagues, err := (*ld.LeaguesHandler).GetAllActive()
+	meta := newMeta(&c)
+	leagues, totalCount, err := (*ld.LeaguesHandler).GetAllActive(meta.Offset, meta.Limit)
 	if err != nil {
 		log.Printf("getAllActive Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
+	meta.Total = totalCount
 
-	return c.JSON(http.StatusOK, leagues)
+	return c.JSON(http.StatusOK, response{
+		Meta:    meta,
+		Results: leagues,
+	})
 }
 
 func (ld *LeaguesDelivery) getLiveGames(c echo.Context) error {
@@ -47,5 +52,7 @@ func (ld *LeaguesDelivery) getLiveGames(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
 
-	return c.JSON(http.StatusOK, games)
+	return c.JSON(http.StatusOK, response{
+		Results: games,
+	})
 }

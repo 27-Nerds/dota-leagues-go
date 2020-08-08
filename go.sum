@@ -23,6 +23,8 @@ github.com/arangodb/go-driver v0.0.0-20200624173407-d1c92a8bd2b8 h1:kWyYp1Gtp4x4
 github.com/arangodb/go-driver v0.0.0-20200624173407-d1c92a8bd2b8/go.mod h1:JG79qtPYRxUB6CdGWSH1XwpolSBjthuZX+Iaz/H38rA=
 github.com/arangodb/go-driver v0.0.0-20200723140910-27e32eebd1d5 h1:ibju3kefUE85omNToeauwTQIo1EmnvfeotvDp8kkN5A=
 github.com/arangodb/go-driver v0.0.0-20200723140910-27e32eebd1d5/go.mod h1:NjXkZdeAKDQm2fhQGIKgLq4bgr2k1X/9sLnROwJX7cc=
+github.com/arangodb/go-driver v0.0.0-20200807150229-78f27fac5d1e h1:FER4g8f8W/w4c9vFaMz8YK2PCujvLPNSMotlKeBDL5o=
+github.com/arangodb/go-driver v0.0.0-20200807150229-78f27fac5d1e/go.mod h1:LwdjK9yStTOYrV3GlwfJV5Krh2eBChLZ41A0Ekb0QP8=
 github.com/arangodb/go-velocypack v0.0.0-20200318135517-5af53c29c67e h1:Xg+hGrY2LcQBbxd0ZFdbGSyRKTYMZCfBbw/pMJFOk1g=
 github.com/arangodb/go-velocypack v0.0.0-20200318135517-5af53c29c67e/go.mod h1:mq7Shfa/CaixoDxiyAAc5jZ6CVBAyPaNQCGS7mkj4Ho=
 github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e/go.mod h1:3U/XgcO3hCbHZ8TKRvWD2dDTCfh9M9ya+I9JpbB7O8o=
