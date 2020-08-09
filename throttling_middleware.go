@@ -1,4 +1,4 @@
-package delivery
+package main
 
 import (
 	"log"
@@ -22,7 +22,15 @@ var (
 // https://echo.labstack.com/middleware
 // the good idea is to move from memstore to redisstore
 // https://github.com/throttled/throttled/blob/master/store/redigostore/redigostore.go
-func init() {
+
+// IPRateLimit rate limiting with default config
+func IPRateLimit() echo.MiddlewareFunc {
+	return IPRateLimitWithConfig(100, 20)
+}
+
+// IPRateLimitWithConfig rate limiting middleware with config
+func IPRateLimitWithConfig(perMin int, burst int) echo.MiddlewareFunc {
+
 	log.Println("init")
 	store, err := memstore.New(65536)
 	if err != nil {
@@ -31,19 +39,14 @@ func init() {
 	}
 
 	quota = throttled.RateQuota{
-		MaxRate:  throttled.PerMin(100),
-		MaxBurst: 20,
+		MaxRate:  throttled.PerMin(perMin),
+		MaxBurst: burst,
 	}
 	rateLimiter, err = throttled.NewGCRARateLimiter(store, quota)
 	if err != nil {
 		log.Panicf("IPRateLimit - ipRateLimiter.Get - err: %v, ", err)
 		//	return nil
 	}
-
-}
-
-// IPRateLimit rate limiting middleware
-func IPRateLimit() echo.MiddlewareFunc {
 
 	// Return middleware handler
 	return func(next echo.HandlerFunc) echo.HandlerFunc {

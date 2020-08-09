@@ -11,6 +11,10 @@
             "user": "login",
             "pass": "pass",
             "name": "dota_leagues"
+        },
+        "throttling": {
+            "per_min": 50,
+            "burst": 15
         }
     },
 
@@ -26,6 +30,10 @@
             "user": "login",
             "pass": "pass",
             "name": "dota_leagues"
+        },
+        "throttling": {
+            "per_min": 50,
+            "burst": 15
         }
     }
 }

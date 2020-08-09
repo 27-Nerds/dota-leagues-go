@@ -21,11 +21,18 @@ import (
 // ENVIRONMENT - Global variable that stores current envorinment
 var ENVIRONMENT = "development"
 
-// GetConfigStr add current env to viper config query
+// GetConfigStr add current env to viper config string query
 func GetConfigStr(key string) string {
 	key = fmt.Sprintf("%s.%s", ENVIRONMENT, key)
 
 	return viper.GetString(key)
+}
+
+// GetConfigInt add current env to viper config int query
+func GetConfigInt(key string) int {
+	key = fmt.Sprintf("%s.%s", ENVIRONMENT, key)
+
+	return viper.GetInt(key)
 }
 
 func init() {
@@ -90,6 +97,8 @@ func main() {
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
 	}))
+
+	e.Use(IPRateLimitWithConfig(GetConfigInt(`throttling.per_min`), GetConfigInt(`throttling.burst`)))
 
 	//CORS
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
