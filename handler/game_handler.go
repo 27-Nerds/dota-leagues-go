@@ -19,20 +19,20 @@ func NewGameHandler(gr *repository.GameRepositoryInterface) GamesHandlerInterfac
 }
 
 // GetLiveLeagueGames preparing response from db
-func (gh *GameHandler) GetLiveLeagueGames(leagueID string) (*[]model.GameResponse, error) {
+func (gh *GameHandler) GetLiveLeagueGames(leagueID string, offset int, limit int) (*[]model.GameResponse, int64, error) {
 	gameResponse := []model.GameResponse{}
 
 	leagueIDInt, err := strconv.Atoi(leagueID)
 	if err != nil {
-		return &gameResponse, nil
+		return &gameResponse, 0, nil
 	}
 
-	gamesFromDb, err := (*gh.gameRepository).GetForLeague(leagueIDInt)
+	gamesFromDb, totalCount, err := (*gh.gameRepository).GetForLeague(leagueIDInt, offset, limit)
 	if e.IsNotFound(err) {
-		return nil, &e.Error{Code: e.ENOTFOUND, Op: "GameHandler.GetLiveLeagueGames", Err: err}
+		return nil, totalCount, &e.Error{Code: e.ENOTFOUND, Op: "GameHandler.GetLiveLeagueGames", Err: err}
 	} else if err != nil {
 		log.Printf("GameHandler.GetLiveLeagueGames GetForLeague error %v", err)
-		return nil, &e.Error{Op: "GameHandler.GetLiveLeagueGames", Err: err}
+		return nil, totalCount, &e.Error{Op: "GameHandler.GetLiveLeagueGames", Err: err}
 	}
 
 	//convert model.Game to model.GameResponse
@@ -48,5 +48,5 @@ func (gh *GameHandler) GetLiveLeagueGames(leagueID string) (*[]model.GameRespons
 		gameResponse = append(gameResponse, g)
 	}
 
-	return &gameResponse, nil
+	return &gameResponse, totalCount, nil
 }

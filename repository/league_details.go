@@ -54,19 +54,19 @@ func (ldr *LeagueDetailsRepository) ExistsByID(id int) (bool, error) {
 }
 
 // GetAllActive returns all leagues wgere end_timestamp is greater than current date
-func (ldr *LeagueDetailsRepository) GetAllActive() (*[]model.LeagueDetails, error) {
+func (ldr *LeagueDetailsRepository) GetAllActive(offset int, limit int) (*[]model.LeagueDetails, int64, error) {
 
-	query := fmt.Sprintf("FOR d IN league_details %s RETURN d", ldr.activityFilter)
+	query := fmt.Sprintf("FOR d IN league_details %s LIMIT %d, %d RETURN d", ldr.activityFilter, offset, limit)
 	bindVars := map[string]interface{}{
 		"today": time.Now().Unix(),
 	}
 
-	leagues, err := ldr.queryAll(query, bindVars)
+	leagues, totalCount, err := ldr.queryAll(query, bindVars, true)
 	if err != nil {
-		return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
+		return nil, 0, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
 	}
 
-	return leagues, nil
+	return leagues, totalCount, nil
 }
 
 // GetAllActiveForTiers returns all leagues wgere end_timestamp is greater than current date
@@ -78,7 +78,7 @@ func (ldr *LeagueDetailsRepository) GetAllActiveForTiers(tiers []int) (*[]model.
 		"tier":  tiers,
 	}
 
-	leagues, err := ldr.queryAll(query, bindVars)
+	leagues, _, err := ldr.queryAll(query, bindVars, false)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActiveForTiers", Err: err}
 	}
@@ -91,6 +91,7 @@ func (ldr *LeagueDetailsRepository) UpdateLiveStatus(key int, newStatus bool) er
 	patch := map[string]interface{}{
 		"is_live": newStatus,
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -132,13 +133,19 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 }
 
 // queryAll performs given query and returs array of serialized objects
-func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]interface{}) (*[]model.LeagueDetails, error) {
+// second return parameter is total count of results, if withTotalCount is set to false, it will be 0
+func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]interface{}, withTotalCount bool) (*[]model.LeagueDetails, int64, error) {
+	var totalCount int64
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ct := context.Background()
+	if withTotalCount {
+		ct = driver.WithQueryFullCount(nil, true)
+	}
+	ctx, cancel := context.WithTimeout(ct, 2*time.Second)
 	defer cancel()
 	cursor, err := (*ldr.Conn).QueryAll(ctx, query, bindVars)
 	if err != nil {
-		return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
+		return nil, totalCount, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
 	}
 
 	defer cursor.Close()
@@ -150,10 +157,13 @@ func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]i
 		if driver.IsNoMoreDocuments(err) {
 			break
 		} else if err != nil {
-			return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
+			return nil, totalCount, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
 		}
 		leagues = append(leagues, doc)
 	}
+	if withTotalCount {
+		totalCount = cursor.Statistics().FullCount()
+	}
 
-	return &leagues, nil
+	return &leagues, totalCount, nil
 }

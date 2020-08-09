@@ -16,14 +16,15 @@ func NewLeaguesHandler(ldr *repository.LeagueDetailsRepositoryInterface) Leagues
 	return &LeaguesHandler{ldr}
 }
 
-// GetAllActive performs DB query and return results
-func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetailsResponse, error) {
+// GetAllActive performs DB query and return results,
+// second returning value is total count
+func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDetailsResponse, int64, error) {
 
 	leagueDetailsResponse := []model.LeagueDetailsResponse{}
 
-	leaguesFromDb, err := (*lh.LeagueDetailsRepository).GetAllActive()
+	leaguesFromDb, totalCount, err := (*lh.LeagueDetailsRepository).GetAllActive(offset, limit)
 	if err != nil {
-		return nil, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
+		return nil, 0, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
 	}
 
 	//convert model.Game to model.GameResponse
@@ -44,5 +45,5 @@ func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetailsResponse, error)
 		leagueDetailsResponse = append(leagueDetailsResponse, l)
 	}
 
-	return &leagueDetailsResponse, nil
+	return &leagueDetailsResponse, totalCount, nil
 }
