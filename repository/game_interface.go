@@ -8,7 +8,7 @@ type GameRepositoryInterface interface {
 	StoreAll(games *[]model.Game) error
 
 	GetAll() (*[]model.Game, error)
-	GetForLeague(leagueID int) (*[]model.Game, error)
+	GetForLeague(leagueID int, offset int, limit int) (*[]model.Game, int64, error)
 
 	RemoveAll() error
 }
