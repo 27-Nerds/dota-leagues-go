@@ -17,13 +17,3 @@ type Game struct {
 	Spectators    int    `json:"spectators"`
 	DbKey         string `json:"_key,omitempty"`
 }
-
-// GameResponse is used to generate REST response
-type GameResponse struct {
-	LeagueID   int    `json:"league_id"`
-	Team1Name  string `json:"team1_name"`
-	Team1ID    int    `json:"team1_id"`
-	Team2Name  string `json:"team2_name"`
-	Team2ID    int    `json:"team2_id"`
-	Spectators int    `json:"spectators"`
-}

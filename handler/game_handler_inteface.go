@@ -4,5 +4,5 @@ import "dota_league/model"
 
 // GamesHandlerInterface interface for leagues handler
 type GamesHandlerInterface interface {
-	GetLiveLeagueGames(leagueID string, offset int, limit int) (*[]model.GameResponse, int64, error)
+	GetLiveLeagueGames(leagueID string, offset int, limit int) (*[]model.Game, int64, error)
 }
