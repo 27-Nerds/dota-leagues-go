@@ -121,3 +121,23 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 
 	return nil
 }
+
+func (lr *LeagueDetailsRepository) Get(id int) (*model.LeagueDetails, error) {
+	query := "FOR d IN leagues FILTER d._key == @id RETURN d"
+	bindVars := map[string]interface{}{
+		"id": id,
+	}
+
+	var league model.LeagueDetails
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := (*lr.Conn).Query(ctx, query, bindVars, &league)
+
+  if err != nil {
+		return nil, &e.Error{Op: "LeagueDetailsRepository.Get", Err: err}
+  }
+
+	return &league, nil
+}
+

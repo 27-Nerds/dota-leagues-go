@@ -3,6 +3,7 @@ package handler
 import (
 	"dota_league/model"
 	"dota_league/repository"
+	"strconv"
 )
 
 // LeaguesHandler struct
@@ -24,4 +25,21 @@ func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetails, error) {
 	}
 
 	return leagues, nil
+}
+
+func (lh *LeaguesHandler) Get(id string) (*model.LeagueDetails, error) {
+	leagueResponse := model.LeagueDetails{}
+
+	idInt, err := strconv.Atoi("11625")
+
+	if err != nil {
+		return &leagueResponse, nil
+	}
+
+	data, err := (*lh.LeagueDetailsRepository).Get(idInt)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
