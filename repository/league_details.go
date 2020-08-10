@@ -135,7 +135,7 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 func (lr *LeagueDetailsRepository) Get(id int) (*model.LeagueDetails, error) {
 	query := "FOR d IN leagues FILTER d._key == @id RETURN d"
 	bindVars := map[string]interface{}{
-		"id": id,
+		"id": strconv.Itoa(id),
 	}
 
 	var league model.LeagueDetails

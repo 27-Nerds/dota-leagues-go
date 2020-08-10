@@ -31,7 +31,7 @@ func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDe
 func (lh *LeaguesHandler) Get(id string) (*model.LeagueDetails, error) {
 	leagueResponse := model.LeagueDetails{}
 
-	idInt, err := strconv.Atoi("11625")
+	idInt, err := strconv.Atoi(id)
 
 	if err != nil {
 		return &leagueResponse, nil
