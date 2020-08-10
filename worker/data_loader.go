@@ -14,6 +14,7 @@ type DataLoader struct {
 	LoadLeagueDetails       chan int
 	LeaguesTicker           *time.Ticker
 	GamesTicker             *time.Ticker
+	PrizePoolTicker         *time.Ticker
 }
 
 // NewDataLoader - create DataLoader and run worker
@@ -33,6 +34,9 @@ func NewDataLoader(
 
 		// update live games every minute
 		GamesTicker: time.NewTicker(1 * time.Minute),
+
+		// update prizepool every hour
+		PrizePoolTicker: time.NewTicker(1 * time.Hour),
 	}
 
 	go dataLoader.run()
@@ -59,6 +63,9 @@ func (dl *DataLoader) run() {
 		case <-dl.GamesTicker.C:
 			go dl.performGamesUpdate()
 
+		case <-dl.PrizePoolTicker.C:
+			go dl.performPrizePoolUpdate()
+
 		case leagueID := <-dl.LoadLeagueDetails:
 
 			sleepTime := 1 * time.Second
@@ -81,5 +88,6 @@ func (dl *DataLoader) run() {
 
 func (dl *DataLoader) stop() {
 	dl.LeaguesTicker.Stop()
+	dl.GamesTicker.Stop()
 	close(dl.LoadLeagueDetails)
 }

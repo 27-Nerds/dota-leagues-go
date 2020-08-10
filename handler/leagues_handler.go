@@ -1,6 +1,7 @@
 package handler
 
 import (
+	e "dota_league/error"
 	"dota_league/model"
 	"dota_league/repository"
 	"strconv"
@@ -16,15 +17,15 @@ func NewLeaguesHandler(ldr *repository.LeagueDetailsRepositoryInterface) Leagues
 	return &LeaguesHandler{ldr}
 }
 
-// GetAllActive performs DB query and return results
-func (lh *LeaguesHandler) GetAllActive() (*[]model.LeagueDetails, error) {
-
-	leagues, err := (*lh.LeagueDetailsRepository).GetAllActive()
+// GetAllActive performs DB query and return results,
+// second returning value is total count
+func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDetails, int64, error) {
+	leaguesFromDb, totalCount, err := (*lh.LeagueDetailsRepository).GetAllActive(offset, limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
 	}
 
-	return leagues, nil
+	return leaguesFromDb, totalCount, nil
 }
 
 func (lh *LeaguesHandler) Get(id string) (*model.LeagueDetails, error) {

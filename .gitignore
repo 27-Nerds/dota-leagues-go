@@ -2,6 +2,10 @@ public/*
 config.json
 dump/
 
+.vscode
+# ignore built binnary
+dota_league
+
 ### VisualStudioCode ###
 .vscode/*
 !.vscode/settings.json
@@ -9,6 +13,8 @@ dump/
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
+
+__debug_bin
 
 ### VisualStudioCode Patch ###
 # Ignore all local history of files
