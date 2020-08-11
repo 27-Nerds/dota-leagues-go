@@ -29,18 +29,19 @@ func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDe
 }
 
 func (lh *LeaguesHandler) Get(id string) (*model.LeagueDetails, error) {
-	leagueResponse := model.LeagueDetails{}
+    leagueResponse := model.LeagueDetails{}
 
-	idInt, err := strconv.Atoi(id)
+    idInt, err := strconv.Atoi(id)
 
-	if err != nil {
-		return &leagueResponse, nil
-	}
+    if err != nil {
+        return &leagueResponse, nil
+    }
 
-	data, err := (*lh.LeagueDetailsRepository).Get(idInt)
-	if err != nil {
-		return nil, err
-	}
+    data, err := (*lh.LeagueDetailsRepository).Get(idInt)
 
-	return data, nil
+    if err != nil {
+        return nil, err
+    }
+
+    return data, nil
 }

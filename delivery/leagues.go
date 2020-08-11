@@ -62,16 +62,16 @@ func (ld *LeaguesDelivery) getLiveGames(c echo.Context) error {
 }
 
 func (ld *LeaguesDelivery) get(c echo.Context) error {
-	id := c.Param("id")
-	league, err := (*ld.LeaguesHandler).Get(id)
+    id := c.Param("id")
+    league, err := (*ld.LeaguesHandler).Get(id)
 
-	if e.IsNotFound(err) {
-    log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
-    return echo.NewHTTPError(http.StatusNotFound, "League Not Found")
-  } else if err != nil {
-    log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
-    return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
-  }
+    if e.IsNotFound(err) {
+        log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+        return echo.NewHTTPError(http.StatusNotFound, "League Not Found")
+    } else if err != nil {
+        log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+        return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
+    }
 
-	return c.JSON(http.StatusOK, generateLeagueDetailsResponse(league))
+    return c.JSON(http.StatusOK, generateLeagueDetailsResponse(league))
 }
