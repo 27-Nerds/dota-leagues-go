@@ -24,7 +24,7 @@ func NewLeaguesDelivery(e *echo.Echo, lh *handler.LeaguesHandlerInterface, gh *h
 
 	e.GET("/leagues", leaguesDelivery.getAllActive)
 	e.GET("/leagues/:id/live-games", leaguesDelivery.getLiveGames)
-	e.GET("/leagues/:id", leaguesDelivery.get)
+	e.GET("/leagues/:id", leaguesDelivery.getById)
 }
 
 func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
@@ -61,9 +61,9 @@ func (ld *LeaguesDelivery) getLiveGames(c echo.Context) error {
 	})
 }
 
-func (ld *LeaguesDelivery) get(c echo.Context) error {
+func (ld *LeaguesDelivery) getById(c echo.Context) error {
     id := c.Param("id")
-    league, err := (*ld.LeaguesHandler).Get(id)
+    league, err := (*ld.LeaguesHandler).GetById(id)
 
     if e.IsNotFound(err) {
         log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))

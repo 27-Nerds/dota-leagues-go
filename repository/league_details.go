@@ -132,9 +132,10 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 	return nil
 }
 
-func (lr *LeagueDetailsRepository) Get(id int) (*model.LeagueDetails, error) {
+// GetById get league
+func (lr *LeagueDetailsRepository) GetById(id int) (*model.LeagueDetails, error) {
     query := "FOR d IN leagues FILTER d._key == @id RETURN d"
-    bindVars := map[string]interface{}{
+    bindVars := map[string]interface{} {
         "id": strconv.Itoa(id),
     }
 

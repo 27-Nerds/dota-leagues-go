@@ -28,7 +28,8 @@ func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDe
 	return leaguesFromDb, totalCount, nil
 }
 
-func (lh *LeaguesHandler) Get(id string) (*model.LeagueDetails, error) {
+// GetById performs DB query and return results
+func (lh *LeaguesHandler) GetById(id string) (*model.LeagueDetails, error) {
     leagueResponse := model.LeagueDetails{}
 
     idInt, err := strconv.Atoi(id)
@@ -37,7 +38,7 @@ func (lh *LeaguesHandler) Get(id string) (*model.LeagueDetails, error) {
         return &leagueResponse, nil
     }
 
-    data, err := (*lh.LeagueDetailsRepository).Get(idInt)
+    data, err := (*lh.LeagueDetailsRepository).GetById(idInt)
 
     if err != nil {
         return nil, err
