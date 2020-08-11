@@ -132,6 +132,26 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 	return nil
 }
 
+// GetById get league
+func (lr *LeagueDetailsRepository) GetById(id int) (*model.LeagueDetails, error) {
+    query := "FOR d IN leagues FILTER d._key == @id RETURN d"
+    bindVars := map[string]interface{} {
+        "id": strconv.Itoa(id),
+    }
+
+    var league model.LeagueDetails
+
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+    _, err := (*lr.Conn).Query(ctx, query, bindVars, &league)
+
+    if err != nil {
+        return nil, &e.Error{Op: "LeagueDetailsRepository.Get", Err: err}
+    }
+
+    return &league, nil
+}
+
 // queryAll performs given query and returs array of serialized objects
 // second return parameter is total count of results, if withTotalCount is set to false, it will be 0
 func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]interface{}, withTotalCount bool) (*[]model.LeagueDetails, int64, error) {

@@ -20,7 +20,6 @@ func NewGameHandler(gr *repository.GameRepositoryInterface) GamesHandlerInterfac
 
 // GetLiveLeagueGames preparing response from db
 func (gh *GameHandler) GetLiveLeagueGames(leagueID string, offset int, limit int) (*[]model.Game, int64, error) {
-
 	leagueIDInt, err := strconv.Atoi(leagueID)
 	if err != nil {
 		return nil, 0, nil

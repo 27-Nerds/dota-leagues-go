@@ -4,6 +4,7 @@ import (
 	e "dota_league/error"
 	"dota_league/model"
 	"dota_league/repository"
+	"strconv"
 )
 
 // LeaguesHandler struct
@@ -25,4 +26,23 @@ func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDe
 	}
 
 	return leaguesFromDb, totalCount, nil
+}
+
+// GetById performs DB query and return results
+func (lh *LeaguesHandler) GetById(id string) (*model.LeagueDetails, error) {
+    leagueResponse := model.LeagueDetails{}
+
+    idInt, err := strconv.Atoi(id)
+
+    if err != nil {
+        return &leagueResponse, nil
+    }
+
+    data, err := (*lh.LeagueDetailsRepository).GetById(idInt)
+
+    if err != nil {
+        return nil, err
+    }
+
+    return data, nil
 }

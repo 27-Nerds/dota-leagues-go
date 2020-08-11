@@ -24,6 +24,7 @@ func NewLeaguesDelivery(e *echo.Echo, lh *handler.LeaguesHandlerInterface, gh *h
 
 	e.GET("/leagues", leaguesDelivery.getAllActive)
 	e.GET("/leagues/:id/live-games", leaguesDelivery.getLiveGames)
+	e.GET("/leagues/:id", leaguesDelivery.getById)
 }
 
 func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
@@ -58,4 +59,19 @@ func (ld *LeaguesDelivery) getLiveGames(c echo.Context) error {
 		Meta:    meta,
 		Results: generateGameResponse(gamesFromDb),
 	})
+}
+
+func (ld *LeaguesDelivery) getById(c echo.Context) error {
+    id := c.Param("id")
+    league, err := (*ld.LeaguesHandler).GetById(id)
+
+    if e.IsNotFound(err) {
+        log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+        return echo.NewHTTPError(http.StatusNotFound, "League Not Found")
+    } else if err != nil {
+        log.Printf("get Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+        return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
+    }
+
+    return c.JSON(http.StatusOK, generateLeagueDetailsResponse(league))
 }
