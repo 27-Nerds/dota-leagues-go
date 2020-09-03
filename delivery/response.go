@@ -1,8 +1,6 @@
 package delivery
 
 import (
-	"log"
-	"net/url"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
@@ -20,17 +18,6 @@ type meta struct {
 }
 
 func newMeta(c *echo.Context) *meta {
-	v, err := url.ParseQuery((*c).QueryString())
-	if err != nil {
-		log.Println("error")
-		return nil
-	}
-	for id, thing := range v {
-		log.Printf("id: %+v, t: %+v", id, thing)
-	}
-
-	log.Println((*c).QueryParam("filter[name]"))
-
 	offset, err := strconv.Atoi((*c).QueryParam("offset"))
 	if err != nil || offset < 0 {
 		offset = 0
