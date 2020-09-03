@@ -82,7 +82,14 @@ func main() {
 	leagueRepository := repository.NewLeagueRepository(&db)
 	leagueDetailsRepository := repository.NewLeagueDetailsRepository(&db)
 	gameRepository := repository.NewGameRepository(&db)
-	_ = worker.NewDataLoader(&leagueRepository, &leagueDetailsRepository, &gameRepository)
+	playerRepository := repository.NewPlayerRepository(&db)
+	teamRepository := repository.NewTeamRepository(&db)
+	_ = worker.NewDataLoader(
+		&leagueRepository,
+		&leagueDetailsRepository,
+		&gameRepository,
+		&playerRepository,
+		&teamRepository)
 
 	//----------------
 	//START WEB SERVER
