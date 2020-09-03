@@ -11,23 +11,33 @@ type DataLoader struct {
 	LeagueRepository        *repository.LeagueRepositoryInterface
 	LeagueDetailsRepository *repository.LeagueDetailsRepositoryInterface
 	GameRepository          *repository.GameRepositoryInterface
+	PlayerRepository        *repository.PlayerRepositoryInterface
+	TeamRepository          *repository.TeamRepositoryInterface
 	LoadLeagueDetails       chan int
+	LoadTeam                chan int
 	LeaguesTicker           *time.Ticker
 	GamesTicker             *time.Ticker
 	PrizePoolTicker         *time.Ticker
+	PlayersTicker           *time.Ticker
 }
 
 // NewDataLoader - create DataLoader and run worker
 func NewDataLoader(
 	lr *repository.LeagueRepositoryInterface,
 	ldr *repository.LeagueDetailsRepositoryInterface,
-	gr *repository.GameRepositoryInterface) *DataLoader {
+	gr *repository.GameRepositoryInterface,
+	pr *repository.PlayerRepositoryInterface,
+	tr *repository.TeamRepositoryInterface,
+) *DataLoader {
 
 	dataLoader := &DataLoader{
 		LeagueRepository:        lr,
 		LeagueDetailsRepository: ldr,
 		GameRepository:          gr,
+		PlayerRepository:        pr,
+		TeamRepository:          tr,
 		LoadLeagueDetails:       make(chan int),
+		LoadTeam:                make(chan int),
 
 		//First leagues tick 2 seconds after start
 		LeaguesTicker: time.NewTicker(2 * time.Second),
@@ -37,6 +47,9 @@ func NewDataLoader(
 
 		// update prizepool every hour
 		PrizePoolTicker: time.NewTicker(1 * time.Hour),
+
+		//First players tick 10 seconds after start
+		PlayersTicker: time.NewTicker(10 * time.Second),
 	}
 
 	go dataLoader.run()
@@ -50,7 +63,8 @@ func (dl *DataLoader) run() {
 	// after start we need to set all leagues as inactive
 	(*dl.LeagueDetailsRepository).SetAllAsNotLive()
 
-	n := 1
+	ln := 1
+	tn := 1
 	for {
 		select {
 		case <-dl.LeaguesTicker.C:
@@ -66,28 +80,52 @@ func (dl *DataLoader) run() {
 		case <-dl.PrizePoolTicker.C:
 			go dl.performPrizePoolUpdate()
 
+		case <-dl.PlayersTicker.C:
+
+			// next players tick in 12 hours
+			dl.PlayersTicker = time.NewTicker(12 * time.Hour)
+
+			go dl.performPlayersUpdate()
+
 		case leagueID := <-dl.LoadLeagueDetails:
 
 			sleepTime := 1 * time.Second
 			// perform each 10th request once in 3 sec to avoid ban
-			if n >= 10 {
+			if ln >= 10 {
 				sleepTime = 3 * time.Second
-				n = 0
+				ln = 0
 			}
-			n++
+			ln++
 
 			err := dl.storeLeagueDetails(leagueID, sleepTime)
 			if err != nil {
 				log.Printf("StoreLeagueDetails error: %s", err)
 			}
 
+		case teamID := <-dl.LoadTeam:
+
+			sleepTime := 1 * time.Second
+			// perform each 10th request once in 3 sec to avoid ban
+			if tn >= 10 {
+				sleepTime = 3 * time.Second
+				tn = 0
+			}
+			tn++
+
+			err := dl.storeTeam(teamID, sleepTime)
+			if err != nil {
+				log.Printf("StoreTeam error: %s", err)
+			}
 		}
 	}
-
 }
 
 func (dl *DataLoader) stop() {
 	dl.LeaguesTicker.Stop()
 	dl.GamesTicker.Stop()
+	dl.PrizePoolTicker.Stop()
+	dl.PlayersTicker.Stop()
+
 	close(dl.LoadLeagueDetails)
+	close(dl.LoadTeam)
 }
