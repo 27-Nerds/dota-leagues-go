@@ -4,6 +4,7 @@ import (
 	"dota_league/api"
 	"dota_league/model"
 	"log"
+	"time"
 )
 
 func (dl *DataLoader) performPlayersUpdate() error {
@@ -14,6 +15,11 @@ func (dl *DataLoader) performPlayersUpdate() error {
 	}
 	log.Println("players info updated.")
 	for _, player := range *players {
+		// skip players with team id = 0
+		if player.TeamID == 0 {
+			continue
+		}
+
 		dl.LoadTeam <- player.TeamID
 	}
 
@@ -54,4 +60,20 @@ func (dl *DataLoader) storePlayers() (*[]model.Player, error) {
 	}
 
 	return &playersData.Players, nil
+}
+
+func (dl *DataLoader) storeSinglePlayer(playerID int, sleepTime time.Duration) error {
+	time.Sleep(sleepTime)
+
+	player, err := api.LoadSinglePlayer(playerID)
+	if err != nil {
+		return err
+	}
+
+	err = (*dl.PlayerRepository).Store(player)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
