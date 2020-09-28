@@ -6,6 +6,7 @@ import (
 	e "dota_league/error"
 	"dota_league/model"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -134,22 +135,23 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 
 // GetById get league
 func (lr *LeagueDetailsRepository) GetById(id int) (*model.LeagueDetails, error) {
-    query := "FOR d IN leagues FILTER d._key == @id RETURN d"
-    bindVars := map[string]interface{} {
-        "id": strconv.Itoa(id),
-    }
+	query := "FOR d IN league_details FILTER d._key == @id RETURN d"
+	bindVars := map[string]interface{}{
+		"id": strconv.Itoa(id),
+	}
 
-    var league model.LeagueDetails
+	var league model.LeagueDetails
 
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-    defer cancel()
-    _, err := (*lr.Conn).Query(ctx, query, bindVars, &league)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := (*lr.Conn).Query(ctx, query, bindVars, &league)
 
-    if err != nil {
-        return nil, &e.Error{Op: "LeagueDetailsRepository.Get", Err: err}
-    }
+	log.Printf("%+v", league)
+	if err != nil {
+		return nil, &e.Error{Op: "LeagueDetailsRepository.Get", Err: err}
+	}
 
-    return &league, nil
+	return &league, nil
 }
 
 // queryAll performs given query and returs array of serialized objects
