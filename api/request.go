@@ -13,7 +13,7 @@ import (
 func doRequest(url string) (io.ReadCloser, error) {
 	op := "api.doRequest"
 	httpsClient := http.Client{
-		Timeout: time.Second * 10, // Timeout after 10 seconds
+		Timeout: time.Second * 15, // Timeout after 15 seconds
 	}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)

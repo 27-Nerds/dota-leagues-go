@@ -8,19 +8,21 @@ import (
 
 // DataLoader struct
 type DataLoader struct {
-	LeagueRepository        *repository.LeagueRepositoryInterface
-	LeagueDetailsRepository *repository.LeagueDetailsRepositoryInterface
-	GameRepository          *repository.GameRepositoryInterface
-	PlayerRepository        *repository.PlayerRepositoryInterface
-	TeamRepository          *repository.TeamRepositoryInterface
-	TeamRosterRepository    *repository.TeamRosterRepositoryInterface
-	LoadLeagueDetails       chan int
-	LoadTeam                chan int
-	LoadSinglePlayer        chan int
-	LeaguesTicker           *time.Ticker
-	GamesTicker             *time.Ticker
-	PrizePoolTicker         *time.Ticker
-	PlayersTicker           *time.Ticker
+	LeagueRepository          *repository.LeagueRepositoryInterface
+	LeagueDetailsRepository   *repository.LeagueDetailsRepositoryInterface
+	GameRepository            *repository.GameRepositoryInterface
+	PlayerRepository          *repository.PlayerRepositoryInterface
+	TeamRepository            *repository.TeamRepositoryInterface
+	TeamRosterRepository      *repository.TeamRosterRepositoryInterface
+	LiveGameDetailsRepository *repository.LiveGameDetailsInterface
+	LoadLeagueDetails         chan int
+	LoadTeam                  chan int
+	LoadSinglePlayer          chan int
+	LeaguesTicker             *time.Ticker
+	GamesTicker               *time.Ticker
+	PrizePoolTicker           *time.Ticker
+	PlayersTicker             *time.Ticker
+	LiveGamesManager          *LiveGamesManager
 }
 
 // NewDataLoader - create DataLoader and run worker
@@ -31,18 +33,20 @@ func NewDataLoader(
 	pr *repository.PlayerRepositoryInterface,
 	tr *repository.TeamRepositoryInterface,
 	trr *repository.TeamRosterRepositoryInterface,
+	lgdr *repository.LiveGameDetailsInterface,
 ) *DataLoader {
 
 	dataLoader := &DataLoader{
-		LeagueRepository:        lr,
-		LeagueDetailsRepository: ldr,
-		GameRepository:          gr,
-		PlayerRepository:        pr,
-		TeamRepository:          tr,
-		TeamRosterRepository:    trr,
-		LoadLeagueDetails:       make(chan int),
-		LoadTeam:                make(chan int),
-		LoadSinglePlayer:        make(chan int),
+		LeagueRepository:          lr,
+		LeagueDetailsRepository:   ldr,
+		GameRepository:            gr,
+		PlayerRepository:          pr,
+		TeamRepository:            tr,
+		TeamRosterRepository:      trr,
+		LiveGameDetailsRepository: lgdr,
+		LoadLeagueDetails:         make(chan int),
+		LoadTeam:                  make(chan int),
+		LoadSinglePlayer:          make(chan int),
 
 		//First leagues tick 2 seconds after start
 		LeaguesTicker: time.NewTicker(2 * time.Second),
@@ -56,6 +60,7 @@ func NewDataLoader(
 		//First players tick 10 seconds after start
 		PlayersTicker: time.NewTicker(10 * time.Second),
 	}
+	dataLoader.LiveGamesManager = NewLiveGamesManager(dataLoader.LiveGameDetailsRepository)
 
 	go dataLoader.run()
 	go dataLoader.runLoadLeagueDetails()
@@ -92,7 +97,6 @@ func (dl *DataLoader) run() {
 			dl.PlayersTicker = time.NewTicker(12 * time.Hour)
 
 			go dl.performPlayersUpdate()
-
 		}
 
 	}

@@ -85,6 +85,7 @@ func main() {
 	playerRepository := repository.NewPlayerRepository(&db)
 	teamRepository := repository.NewTeamRepository(&db)
 	teamRosterRepository := repository.NewTeamRosterRepository(&db)
+	liveGameDetailsRepository := repository.NewLiveGameDetailsRepository(&db)
 	_ = worker.NewDataLoader(
 		&leagueRepository,
 		&leagueDetailsRepository,
@@ -92,6 +93,7 @@ func main() {
 		&playerRepository,
 		&teamRepository,
 		&teamRosterRepository,
+		&liveGameDetailsRepository,
 	)
 
 	//----------------

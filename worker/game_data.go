@@ -49,6 +49,11 @@ func (dl *DataLoader) performGamesUpdate() error {
 		}
 		log.Printf("finised leagues: %v", finishedLeagues)
 		log.Printf("Active leagues: %v", activeLeagues)
+
+		// add games to the manager
+		for _, lGame := range liveGames.Games {
+			dl.LiveGamesManager.AddGame(lGame)
+		}
 	}
 
 	for activeLeagueID := range activeLeagues {
