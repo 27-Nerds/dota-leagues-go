@@ -3,8 +3,10 @@ package worker
 import (
 	"context"
 	"dota_league/api"
+	e "dota_league/error"
 	"dota_league/model"
 	"log/slog"
+	"time"
 )
 
 func (dl *DataLoader) performPlayersUpdate(ctx context.Context) error {
@@ -21,6 +23,14 @@ func (dl *DataLoader) performPlayersUpdate(ctx context.Context) error {
 		}
 
 		seen[player.TeamID] = true
+		// Existing teams have their own refresh sweep, including empty rosters.
+		exists, err := dl.TeamRepository.ExistsByID(ctx, player.TeamID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
 		if err := enqueue(ctx, dl.LoadTeam, player.TeamID); err != nil {
 			return err
 		}
@@ -36,32 +46,13 @@ func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) 
 		return nil, err
 	}
 
-	hasRecord, err := dl.PlayerRepository.HasAnyRecord(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if hasRecord {
-		for _, player := range playersData.Players {
-			//TODO: we need to update values sometimes
-
-			//Store player only if it not exists in the DB
-			b, err := dl.PlayerRepository.ExistsByID(ctx, player.ID)
-			if err != nil {
-				return nil, err
-			}
-
-			if !b {
-				if err = dl.PlayerRepository.Store(ctx, &player); err != nil {
-					return nil, err
-				}
-			}
-		}
-
-	} else {
-		err = dl.PlayerRepository.StoreAll(ctx, playersData.Players)
+	for _, player := range playersData.Players {
+		created, err := dl.PlayerRepository.SaveProfile(ctx, &player)
 		if err != nil {
 			return nil, err
+		}
+		if created {
+			dl.recordPlayerUpdate(ctx, &player)
 		}
 	}
 
@@ -69,15 +60,65 @@ func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) 
 }
 
 func (dl *DataLoader) storeSinglePlayer(ctx context.Context, playerID int) error {
-	player, err := api.LoadSinglePlayer(ctx, playerID)
+	return dl.storeSinglePlayerWithLoader(ctx, playerID, api.LoadPlayerWithSteamFallback)
+}
+
+const missingPlayerRetryInterval = 24 * time.Hour
+const missingPlayerCacheLimit = 4096
+
+func (dl *DataLoader) storeSinglePlayerWithLoader(ctx context.Context, playerID int, load func(context.Context, int) (*model.Player, error)) error {
+	needsRefresh, err := dl.PlayerRepository.NeedsProfileRefresh(ctx, playerID, time.Now())
+	if err != nil {
+		return err
+	}
+	if !needsRefresh {
+		delete(dl.missingPlayers, playerID)
+		return nil
+	}
+	if time.Now().Before(dl.missingPlayers[playerID]) {
+		return nil
+	}
+	delete(dl.missingPlayers, playerID)
+	player, err := load(ctx, playerID)
+	if e.IsNotFound(err) && ctx.Err() == nil {
+		dl.rememberMissingPlayer(playerID)
+		slog.DebugContext(ctx, "player profile unavailable from DPC and Steam", "account_id", playerID, "retry_after", dl.missingPlayers[playerID])
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 
-	err = dl.PlayerRepository.Store(ctx, player)
+	created, err := dl.PlayerRepository.SaveProfile(ctx, player)
 	if err != nil {
 		return err
+	}
+	if created {
+		dl.recordPlayerUpdate(ctx, player)
 	}
 
 	return nil
+}
+
+// Keep negative lookups bounded; expired entries are removed on the next miss.
+func (dl *DataLoader) rememberMissingPlayer(playerID int) {
+	now := time.Now()
+	if dl.missingPlayers == nil {
+		dl.missingPlayers = make(map[int]time.Time)
+	}
+	oldestID := 0
+	var oldest time.Time
+	for id, until := range dl.missingPlayers {
+		if !now.Before(until) {
+			delete(dl.missingPlayers, id)
+			continue
+		}
+		if oldest.IsZero() || until.Before(oldest) {
+			oldestID, oldest = id, until
+		}
+	}
+	if len(dl.missingPlayers) >= missingPlayerCacheLimit {
+		delete(dl.missingPlayers, oldestID)
+	}
+	dl.missingPlayers[playerID] = now.Add(missingPlayerRetryInterval)
 }

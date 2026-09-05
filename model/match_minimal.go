@@ -42,3 +42,9 @@ type MatchMinimal struct {
 	IsPlayerDraft bool                 `json:"is_player_draft"`
 	DBKey         string               `json:"_key,omitempty"`
 }
+
+// MatchReference is a crawlable match recorded in a league schedule.
+type MatchReference struct {
+	LeagueID int    `json:"league_id"`
+	MatchID  string `json:"match_id"`
+}

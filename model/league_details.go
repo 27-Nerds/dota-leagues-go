@@ -98,3 +98,14 @@ type Stream struct {
 	StreamURL         string `json:"stream_url"`
 	VodURL            string `json:"vod_url"`
 }
+
+// LeagueFilter selects the lifecycle view and optional catalogue filters.
+type LeagueFilter struct {
+	Sort     string
+	Order    string
+	Status   string
+	Search   string
+	Tier     *int
+	Region   *int
+	LiveOnly bool
+}

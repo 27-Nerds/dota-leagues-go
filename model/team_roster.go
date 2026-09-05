@@ -11,4 +11,5 @@ type TeamRoster struct {
 type TeamMember struct {
 	AccountID int  `json:"account_id"`
 	IsActive  bool `json:"is_active"`
+	Admin     bool `json:"admin,omitempty"`
 }

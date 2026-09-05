@@ -23,6 +23,9 @@ func TestTeamDecodesFullDpcFixture(t *testing.T) {
 	if len(team.Members) == 0 {
 		t.Error("expected members")
 	} else {
+		if team.Members[0].RealName != "Erik Engel" {
+			t.Errorf("member real_name lost during decoding: %q", team.Members[0].RealName)
+		}
 		hasProName := false
 		for _, m := range team.Members {
 			if m.ProName != "" {

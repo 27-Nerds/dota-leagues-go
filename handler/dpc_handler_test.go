@@ -163,7 +163,7 @@ func TestMatchMinimalHandlerCacheHit(t *testing.T) {
 	repo := &mockMatchRepo{cached: &model.MatchMinimal{}}
 
 	loaded := false
-	h := NewMatchMinimalHandler(repo, func(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error) {
+	h := NewMatchMinimalHandler(repo, nil, func(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error) {
 		loaded = true
 		return nil, nil
 	})
@@ -182,7 +182,7 @@ func TestMatchMinimalHandlerMissStores(t *testing.T) {
 	repo := &mockMatchRepo{getErr: &e.Error{Code: e.ENOTFOUND, Message: "nf"}}
 
 	apiData := &model.MatchMinimal{}
-	h := NewMatchMinimalHandler(repo, func(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error) {
+	h := NewMatchMinimalHandler(repo, nil, func(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error) {
 		return apiData, nil
 	})
 

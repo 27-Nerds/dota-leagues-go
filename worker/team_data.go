@@ -3,9 +3,11 @@ package worker
 import (
 	"context"
 	"dota_league/api"
+	e "dota_league/error"
 	"dota_league/model"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 )
 
@@ -18,13 +20,19 @@ func (dl *DataLoader) storeTeam(ctx context.Context, teamID int) error {
 		return err
 	}
 
+	var stored *model.Team
 	if exist {
-		stored, gerr := dl.TeamRepository.GetByID(ctx, teamID)
+		var gerr error
+		stored, gerr = dl.TeamRepository.GetByID(ctx, teamID)
 		switch {
 		case gerr != nil:
 			return gerr
 		case time.Since(time.Unix(stored.UpdatedTimestamp, 0)) < detailsRefreshInterval:
-			return nil
+			err := dl.downloadTeamImage(ctx, stored)
+			if e.IsNotFound(err) {
+				return nil
+			}
+			return err
 		}
 	}
 
@@ -33,7 +41,7 @@ func (dl *DataLoader) storeTeam(ctx context.Context, teamID int) error {
 		return err
 	}
 
-	if err := dl.storeTeamRoster(ctx, team); err != nil {
+	if err := dl.storeTeamRoster(ctx, team, exist); err != nil {
 		return err
 	}
 
@@ -48,8 +56,10 @@ func (dl *DataLoader) storeTeam(ctx context.Context, teamID int) error {
 		return err
 	}
 
+	dl.recordUpdate(ctx, "team", team.ID, team.Name, teamSnapshot(stored), teamSnapshot(team))
+
 	err = dl.downloadTeamImage(ctx, team)
-	if err != nil {
+	if err != nil && !e.IsNotFound(err) {
 		slog.WarnContext(ctx, "download team image", "team_id", teamID, "error", err)
 	}
 
@@ -58,22 +68,20 @@ func (dl *DataLoader) storeTeam(ctx context.Context, teamID int) error {
 
 func (dl *DataLoader) downloadTeamImage(ctx context.Context, team *model.Team) error {
 
-	// skip if logo url is empty
-	if team.URLLogo == "" {
-		return nil
+	path := filepath.Join(assetDirectory(), "teams", fmt.Sprint(team.ID))
+	if team.URLLogo != "" {
+		err := api.DownloadImageIfNotExist(ctx, team.URLLogo, path, "logo.png")
+		if !e.IsNotFound(err) {
+			return err
+		}
 	}
 
-	path := fmt.Sprintf("public/teams/%d", team.ID)
-
-	err := api.DownloadImageIfNotExist(ctx, team.URLLogo, path, "logo.png")
-	if err != nil {
-		return err
-	}
-
-	return nil
+	// Valve's website also serves team logos by ID when the API URL is absent.
+	url := fmt.Sprintf("https://cdn.steamstatic.com/apps/dota2/teamlogos/%d.png", team.ID)
+	return api.DownloadImageIfNotExist(ctx, url, path, "logo.png")
 }
 
-func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team) error {
+func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team, teamExists bool) error {
 	teamRoster := model.TeamRoster{
 		TeamID: team.ID,
 	}
@@ -84,11 +92,11 @@ func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team) err
 			continue
 		}
 
-		exist, err := dl.PlayerRepository.ExistsByID(ctx, member.AccountID)
+		needsRefresh, err := dl.PlayerRepository.NeedsProfileRefresh(ctx, member.AccountID, time.Now())
 		if err != nil {
 			return err
 		}
-		if !exist {
+		if needsRefresh {
 			slog.DebugContext(ctx, "queue team member", "account_id", member.AccountID)
 			if err := enqueue(ctx, dl.LoadSinglePlayer, member.AccountID); err != nil {
 				return err
@@ -98,6 +106,7 @@ func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team) err
 		teamMember := model.TeamMember{
 			AccountID: member.AccountID,
 			IsActive:  true,
+			Admin:     member.Admin,
 		}
 		teamRoster.TeamMembers = append(teamRoster.TeamMembers, teamMember)
 	}
@@ -107,7 +116,12 @@ func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team) err
 		return err
 	}
 
+	var stored *model.TeamRoster
 	if exist {
+		stored, err = dl.TeamRosterRepository.GetByID(ctx, team.ID)
+		if err != nil {
+			return err
+		}
 		err = dl.TeamRosterRepository.Update(ctx, &teamRoster)
 	} else {
 		err = dl.TeamRosterRepository.Store(ctx, &teamRoster)
@@ -116,5 +130,25 @@ func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team) err
 		return err
 	}
 
+	// Initial membership belongs to the team creation event. Publish roster
+	// activity only when an existing team's recorded membership changes.
+	if teamExists && stored != nil {
+		dl.recordUpdate(ctx, "roster", team.ID, team.Name, rosterSnapshot(stored), rosterSnapshot(&teamRoster))
+	}
+	return nil
+}
+
+// Scan all stored teams independently of the current player directory. The
+// single consumer applies the freshness guard again when each job reaches it.
+func (dl *DataLoader) performTeamsUpdate(ctx context.Context) error {
+	ids, err := dl.TeamRepository.GetRefreshCandidates(ctx, time.Now())
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := enqueue(ctx, dl.LoadTeam, id); err != nil {
+			return err
+		}
+	}
 	return nil
 }

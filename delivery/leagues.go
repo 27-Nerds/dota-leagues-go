@@ -49,7 +49,11 @@ func (ld *LeaguesDelivery) getSeries(c echo.Context) error {
 
 func (ld *LeaguesDelivery) getAllActive(c echo.Context) error {
 	meta := newMeta(c)
-	leaguesFromDB, totalCount, err := ld.LeaguesHandler.GetAllActive(c.Request().Context(), meta.Offset, meta.Limit)
+	filter, err := leagueFilter(c)
+	if err != nil {
+		return err
+	}
+	leaguesFromDB, totalCount, err := ld.LeaguesHandler.GetAll(c.Request().Context(), meta.Offset, meta.Limit, filter)
 	if err != nil {
 		slog.ErrorContext(c.Request().Context(), "get active leagues", "error", err)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")

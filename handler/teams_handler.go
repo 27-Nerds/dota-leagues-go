@@ -18,9 +18,9 @@ func NewTeamsHandler(trr TeamReader) *TeamsHandler {
 	}
 }
 
-func (th *TeamsHandler) GetAll(ctx context.Context, offset int, limit int) ([]model.Team, int64, error) {
+func (th *TeamsHandler) GetAll(ctx context.Context, offset int, limit int, filter model.TeamFilter) ([]model.Team, int64, error) {
 
-	teamsFromDB, totalCount, err := th.TeamRepository.GetAll(ctx, offset, limit)
+	teamsFromDB, totalCount, err := th.TeamRepository.GetAll(ctx, offset, limit, filter)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "TeamsHandler.GetAll", Err: err}
 	}

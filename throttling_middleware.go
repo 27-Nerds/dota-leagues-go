@@ -39,7 +39,7 @@ func IPRateLimitWithConfig(perMin int, burst int) echo.MiddlewareFunc {
 			// Echo's root static-file route serves logos and frontend assets.
 			// These requests must not consume the API's per-IP quota. Match the
 			// registered route, so API parameters ending in .png remain limited.
-			if c.Path() == "/*" && c.Request().Method == http.MethodGet {
+			if (c.Path() == "/*" || c.Path() == "/teams/:id/logo.png") && c.Request().Method == http.MethodGet {
 				return next(c)
 			}
 

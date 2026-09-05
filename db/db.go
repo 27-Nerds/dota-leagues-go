@@ -63,7 +63,7 @@ func (a *ArangoDB) collection(ctx context.Context, colName string) (arango.Colle
 	return col, nil
 }
 
-// Query assing result to resObj and returns id as first value
+// Query assigns the first result to resObj and returns its key.
 func (a *ArangoDB) Query(ctx context.Context, query string, bindVars map[string]any, resObj any) (string, error) {
 	const op = "db.Query"
 	cursor, err := a.query(ctx, query, bindVars, false)
@@ -96,6 +96,9 @@ func (a *ArangoDB) Update(ctx context.Context, colName string, key string, obj a
 	}
 
 	_, err = col.UpdateDocument(ctx, key, obj)
+	if shared.IsNotFound(err) {
+		return &e.Error{Code: e.ENOTFOUND, Op: op, Err: err}
+	}
 	if err != nil {
 		return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
@@ -195,14 +198,25 @@ func (a *ArangoDB) DoQueryBuilder(ctx context.Context, query string, bindVars ma
 	return nil
 }
 
-// WithTransaction runs fn atomically against one collection, creating it first if needed.
+// WithTransaction runs fn atomically against the specified collections, creating them first if needed.
 // All operations in fn must use the supplied transaction context.
-func (a *ArangoDB) WithTransaction(ctx context.Context, colName string, fn func(context.Context) error) error {
+func (a *ArangoDB) WithTransaction(ctx context.Context, colName string, fn func(context.Context) error, additionalCollections ...string) error {
+	return a.withTransaction(ctx, append([]string{colName}, additionalCollections...), false, fn)
+}
+
+// Startup rebuilds take exclusive write locks to avoid racing feed writers.
+func (a *ArangoDB) withTransaction(ctx context.Context, collections []string, exclusive bool, fn func(context.Context) error) error {
 	const op = "db.WithTransaction"
-	if _, err := a.collection(ctx, colName); err != nil {
-		return &e.Error{Op: op, Err: err}
+	for _, name := range collections {
+		if _, err := a.collection(ctx, name); err != nil {
+			return &e.Error{Op: op, Err: err}
+		}
 	}
-	tx, err := a.DB.BeginTransaction(ctx, arango.TransactionCollections{Write: []string{colName}}, nil)
+	access := arango.TransactionCollections{Write: collections}
+	if exclusive {
+		access = arango.TransactionCollections{Exclusive: collections}
+	}
+	tx, err := a.DB.BeginTransaction(ctx, access, nil)
 	if err != nil {
 		return &e.Error{Op: op, Err: err}
 	}
@@ -246,4 +260,24 @@ func (a *ArangoDB) query(ctx context.Context, query string, bindVars map[string]
 		BindVars: bindVars,
 		Options:  arango.QuerySubOptions{FullCount: fullCount},
 	})
+}
+
+// EnsureSourceCollections prepares the small raw-source archive and its status index.
+func (a *ArangoDB) EnsureSourceCollections(ctx context.Context) error {
+	for _, name := range []string{"source_snapshots", "source_status"} {
+		if err := a.ensureCollectionIndexes(ctx, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EnsureCoreCollections makes a fresh database queryable before collectors start.
+func (a *ArangoDB) EnsureCoreCollections(ctx context.Context) error {
+	for _, name := range []string{"leagues", "league_details", "league_series", "teams", "players", "team_rosters", "games", "live_game_details", "dpc_standings", "league_results", "match_minimal"} {
+		if _, err := a.collection(ctx, name); err != nil {
+			return err
+		}
+	}
+	return nil
 }

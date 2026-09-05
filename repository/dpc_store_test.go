@@ -136,6 +136,6 @@ func TestMatchMinimalStoreConflictUpdates(t *testing.T) {
 	}
 }
 
-func (f *fakeDB) WithTransaction(ctx context.Context, colName string, fn func(context.Context) error) error {
+func (f *fakeDB) WithTransaction(ctx context.Context, colName string, fn func(context.Context) error, additionalCollections ...string) error {
 	return fn(ctx)
 }

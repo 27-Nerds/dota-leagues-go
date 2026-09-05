@@ -25,7 +25,11 @@ func NewTeamsDelivery(e *echo.Echo, th TeamsService) {
 
 func (td *TeamsDelivery) getAll(c echo.Context) error {
 	meta := newMeta(c)
-	teamsFromDB, totalCount, err := td.TeamsHandler.GetAll(c.Request().Context(), meta.Offset, meta.Limit)
+	filter, err := teamFilter(c)
+	if err != nil {
+		return err
+	}
+	teamsFromDB, totalCount, err := td.TeamsHandler.GetAll(c.Request().Context(), meta.Offset, meta.Limit, filter)
 	if err != nil {
 		slog.ErrorContext(c.Request().Context(), "get teams", "error", err)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"dota_league/model"
+	"time"
 )
 
 // LiveGameDetailsRepository provides persistence operations needed by background refreshes.
@@ -14,6 +15,10 @@ type LiveGameDetailsRepository interface {
 
 // PlayerRepository provides persistence operations needed by background refreshes.
 type PlayerRepository interface {
+	GetSteamRefreshCandidates(context.Context, time.Time, int) ([]int, error)
+	SaveSteamEnrichment(context.Context, int, *model.Player, time.Time, string) error
+	NeedsProfileRefresh(context.Context, int, time.Time) (bool, error)
+	SaveProfile(context.Context, *model.Player) (bool, error)
 	Store(context.Context, *model.Player) error
 	StoreAll(context.Context, []model.Player) error
 	ExistsByID(ctx context.Context, id int) (bool, error)
@@ -22,6 +27,7 @@ type PlayerRepository interface {
 
 // TeamRepository provides persistence operations needed by background refreshes.
 type TeamRepository interface {
+	GetRefreshCandidates(context.Context, time.Time) ([]int, error)
 	Store(context.Context, *model.Team) error
 	Update(context.Context, *model.Team) error
 	GetByID(ctx context.Context, id int) (*model.Team, error)
@@ -47,10 +53,12 @@ type LeagueRepository interface {
 	ExistsByID(ctx context.Context, id int) (bool, error)
 	HasAnyRecord(ctx context.Context) (bool, error)
 	GetAllActive(ctx context.Context) ([]model.LeagueDetails, error)
+	GetMissingHistorical(ctx context.Context) ([]int, error)
 }
 
 // TeamRosterRepository provides persistence operations needed by background refreshes.
 type TeamRosterRepository interface {
+	GetByID(context.Context, int) (*model.TeamRoster, error)
 	Store(context.Context, *model.TeamRoster) error
 	Update(context.Context, *model.TeamRoster) error
 	ExistsByTeamID(ctx context.Context, TeamID int) (bool, error)

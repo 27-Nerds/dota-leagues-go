@@ -4,8 +4,10 @@ import (
 	"context"
 	"dota_league/api"
 	e "dota_league/error"
+	"dota_league/model"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 )
 
@@ -14,7 +16,7 @@ func (dl *DataLoader) downloadLeagueImage(ctx context.Context, leagueID int) err
 	// path under apps/dota2/images/leagues does not contain newer leagues.
 	url := fmt.Sprintf("https://shared.steamstatic.com/dota_leagues/images/%d/image_8.png", leagueID)
 
-	path := fmt.Sprintf("public/%d", leagueID)
+	path := filepath.Join(assetDirectory(), fmt.Sprint(leagueID))
 
 	err := api.DownloadImageIfNotExist(ctx, url, path, "logo.png")
 	if e.IsNotFound(err) {
@@ -48,7 +50,7 @@ func (dl *DataLoader) performPrizePoolUpdate(ctx context.Context) error {
 			return err
 		}
 		// do not store 0 prizepool
-		if prizePool.PrizePool == 0 {
+		if prizePool.PrizePool == 0 || prizePool.PrizePool == league.TotalPrizePool {
 			continue
 		}
 
@@ -56,6 +58,9 @@ func (dl *DataLoader) performPrizePoolUpdate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		dl.recordUpdate(ctx, "tournament", league.ID, league.Name,
+			map[string]any{"total_prize_pool": league.TotalPrizePool},
+			map[string]any{"total_prize_pool": prizePool.PrizePool})
 	}
 
 	return err
@@ -94,33 +99,23 @@ func (dl *DataLoader) storeLeagues(ctx context.Context) error {
 		return err
 	}
 
-	hasRecord, err := dl.LeagueRepository.HasAnyRecord(ctx)
+	return dl.LeagueRepository.StoreAll(ctx, leagueData.Leagues)
+}
+
+// Archive work runs separately so its API calls cannot block the live queue.
+func (dl *DataLoader) performHistoricalLeaguesUpdate(ctx context.Context) error {
+	ids, err := dl.LeagueRepository.GetMissingHistorical(ctx)
 	if err != nil {
 		return err
 	}
-
-	if hasRecord {
-		for _, league := range leagueData.Leagues {
-			//Store league only if it not exists in the DB
-			b, err := dl.LeagueRepository.ExistsByID(ctx, league.ID)
-			if err != nil {
-				return err
-			}
-
-			if !b {
-				if err = dl.LeagueRepository.Store(ctx, &league); err != nil {
-					return err
-				}
-			}
+	for _, id := range ids {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-
-	} else {
-		err = dl.LeagueRepository.StoreAll(ctx, leagueData.Leagues)
-		if err != nil {
-			return err
+		if err := dl.storeLeagueDetails(ctx, id); err != nil {
+			slog.WarnContext(ctx, "load historical tournament", "league_id", id, "error", err)
 		}
 	}
-
 	return nil
 }
 
@@ -132,8 +127,10 @@ func (dl *DataLoader) storeLeagueDetails(ctx context.Context, leagueID int) erro
 		return err
 	}
 
+	var stored *model.LeagueDetails
 	if exist {
-		stored, gerr := dl.LeagueDetailsRepository.GetByID(ctx, leagueID)
+		var gerr error
+		stored, gerr = dl.LeagueDetailsRepository.GetByID(ctx, leagueID)
 		switch {
 		case gerr != nil:
 			return gerr
@@ -192,6 +189,9 @@ func (dl *DataLoader) storeLeagueDetails(ctx context.Context, leagueID int) erro
 	if err != nil {
 		return err
 	}
+
+	dl.recordUpdate(ctx, "tournament", leagueID, leagueDetails.Details.Name,
+		tournamentSnapshot(stored), tournamentSnapshot(&leagueDetails.Details))
 
 	err = dl.downloadLeagueImage(ctx, leagueID)
 	if err != nil {

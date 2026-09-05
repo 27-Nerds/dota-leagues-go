@@ -51,5 +51,8 @@ func LoadSinglePlayer(ctx context.Context, playerID int) (*model.Player, error) 
 		return nil, &e.Error{Code: e.ENOTFOUND, Op: op, Message: fmt.Sprintf("no dpc profile for account_id %d", playerID)}
 	}
 
+	if playerJSON.ID != playerID {
+		return nil, &e.Error{Code: e.EINVALID, Op: op, Message: fmt.Sprintf("unexpected account_id %d for player %d", playerJSON.ID, playerID)}
+	}
 	return &playerJSON, nil
 }

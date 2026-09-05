@@ -7,6 +7,7 @@ import (
 	"dota_league/model"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	driver "github.com/arangodb/go-driver/v2/arangodb/shared"
@@ -67,12 +68,25 @@ func (ldr *LeagueDetailsRepository) ExistsByID(ctx context.Context, id int) (boo
 	return exists, nil
 }
 
-// GetAllActive returns all leagues wgere end_timestamp is greater than current date
-func (ldr *LeagueDetailsRepository) GetAllActive(ctx context.Context, offset int, limit int) ([]model.LeagueDetails, int64, error) {
+// GetAll returns a paginated lifecycle view with search and tournament filters.
+func (ldr *LeagueDetailsRepository) GetAll(ctx context.Context, offset int, limit int, filter model.LeagueFilter) ([]model.LeagueDetails, int64, error) {
+	sort := "active DESC, d.tier DESC, d.is_live DESC, (active ? ABS(d.start_timestamp - @today) : -d.end_timestamp), d.total_prize_pool DESC, d.league_id ASC"
+	if field, ok := map[string]string{"name": "LOWER(d.name)", "start_date": "d.start_timestamp", "end_date": "d.end_timestamp", "prize_pool": "d.total_prize_pool", "tier": "d.tier"}[filter.Sort]; ok {
+		sort = field + " " + sortOrder(filter.Sort, filter.Order) + ", d.league_id ASC"
+	}
 
-	query := fmt.Sprintf("FOR d IN league_details %s LIMIT %d, %d RETURN d", ldr.activityFilter, offset, limit)
+	query := `FOR d IN league_details
+ LET active = (d.end_timestamp >= @today && d.status != 5) || d.is_live == true
+ FILTER @status == "all" || (@status == "completed" ? !active : active)
+ FILTER @search == "" || CONTAINS(LOWER(d.name), @search)
+ FILTER @tier == null || d.tier == @tier
+ FILTER @region == null || d.region == @region
+ FILTER !@liveOnly || d.is_live == true
+ SORT ` + sort + `
+ LIMIT @offset, @limit RETURN d`
 	bindVars := map[string]any{
-		"today": time.Now().Unix(),
+		"today": time.Now().Unix(), "status": filter.Status, "search": strings.ToLower(strings.TrimSpace(filter.Search)),
+		"tier": filter.Tier, "region": filter.Region, "liveOnly": filter.LiveOnly, "offset": offset, "limit": limit,
 	}
 
 	leagues, totalCount, err := ldr.queryAll(ctx, query, bindVars, true)
@@ -179,7 +193,7 @@ func (ldr *LeagueDetailsRepository) queryAll(ctx context.Context, query string, 
 	}
 
 	defer db.CloseCursor(cursor)
-	var leagues []model.LeagueDetails
+	leagues := []model.LeagueDetails{}
 
 	for {
 		var doc model.LeagueDetails

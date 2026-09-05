@@ -29,23 +29,12 @@ func LoadLeagues(ctx context.Context) (*model.LeagueData, error) {
 
 // LoadLeagueDetails loads json from the Dota API for the given leagueID
 func LoadLeagueDetails(ctx context.Context, leagueID int) (*model.LeagueDetailsData, error) {
-	op := "api.LoadLeagueDetails"
+	details := &model.LeagueDetailsData{}
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2League/GetLeagueData/v001?league_id=%d", leagueID)
-	body, err := doRequest(ctx, url)
-	if err != nil {
-		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+	if err := loadSource(ctx, "league", leagueID, url, details); err != nil {
+		return nil, err
 	}
-	defer closeResponse(body)
-
-	leaguesDetailsJSON := model.LeagueDetailsData{}
-
-	err = json.NewDecoder(body).Decode(&leaguesDetailsJSON)
-
-	if err != nil {
-		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
-	}
-
-	return &leaguesDetailsJSON, nil
+	return details, nil
 }
 
 // PrizePoolResponse api json struct

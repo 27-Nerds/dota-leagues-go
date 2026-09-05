@@ -7,7 +7,7 @@ import (
 
 // LeagueDetailsReader retrieves league details for application requests.
 type LeagueDetailsReader interface {
-	GetAllActive(ctx context.Context, offset int, limit int) ([]model.LeagueDetails, int64, error)
+	GetAll(ctx context.Context, offset int, limit int, filter model.LeagueFilter) ([]model.LeagueDetails, int64, error)
 	GetByID(ctx context.Context, id int) (*model.LeagueDetails, error)
 }
 
@@ -23,7 +23,7 @@ type GameReader interface {
 
 // TeamReader retrieves teams for application requests.
 type TeamReader interface {
-	GetAll(ctx context.Context, offset int, limit int) ([]model.Team, int64, error)
+	GetAll(ctx context.Context, offset int, limit int, filter model.TeamFilter) ([]model.Team, int64, error)
 	GetByID(ctx context.Context, id int) (*model.Team, error)
 }
 
@@ -43,4 +43,9 @@ type LeagueResultsStore interface {
 type MatchStore interface {
 	Get(ctx context.Context, matchID string) (*model.MatchMinimal, error)
 	Store(context.Context, *model.MatchMinimal) error
+}
+
+// PlayerNamesReader resolves stored display names in one batch.
+type PlayerNamesReader interface {
+	GetNames(context.Context, []int) (map[int]string, error)
 }

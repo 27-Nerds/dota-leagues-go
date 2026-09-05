@@ -8,7 +8,7 @@ import (
 
 // Database provides the ArangoDB operations used by repositories.
 type Database interface {
-	WithTransaction(ctx context.Context, colName string, fn func(context.Context) error) error
+	WithTransaction(ctx context.Context, colName string, fn func(context.Context) error, additionalCollections ...string) error
 	Insert(ctx context.Context, colName string, obj any) error
 	InsertMany(ctx context.Context, colName string, obj any) error
 	Query(ctx context.Context, query string, bindVars map[string]any, resObj any) (string, error)

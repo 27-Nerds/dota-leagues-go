@@ -19,6 +19,10 @@ import (
 // valveLimiter is shared by all Valve API requests.
 var valveLimiter atomic.Pointer[rate.Limiter]
 
+// Only one background request may reserve a future token. Other workers wait
+// here so interactive cache misses do not queue behind every live-game poll.
+var backgroundRequests = make(chan struct{}, 1)
+
 func init() {
 	valveLimiter.Store(rate.NewLimiter(defaultValveRPS, 1))
 }
@@ -39,10 +43,29 @@ func SetValveRateLimit(rps float64) {
 }
 
 func doRequest(ctx context.Context, url string) (io.ReadCloser, error) {
+	return doRateLimitedRequest(ctx, url, false)
+}
+
+func doInteractiveRequest(ctx context.Context, url string) (io.ReadCloser, error) {
+	return doRateLimitedRequest(ctx, url, true)
+}
+
+func waitForValve(ctx context.Context, interactive bool) error {
+	if !interactive {
+		select {
+		case backgroundRequests <- struct{}{}:
+			defer func() { <-backgroundRequests }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return valveLimiter.Load().Wait(ctx)
+}
+
+func doRateLimitedRequest(ctx context.Context, url string, interactive bool) (io.ReadCloser, error) {
 	op := "api.doRequest"
 
-	limiter := valveLimiter.Load()
-	if err := limiter.Wait(ctx); err != nil {
+	if err := waitForValve(ctx, interactive); err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -118,3 +141,6 @@ func closeResponse(body io.Closer) {
 		slog.Warn("close API response", "error", err)
 	}
 }
+
+// ValveRateLimit reports the configured request budget for background scheduling.
+func ValveRateLimit() float64 { return float64(valveLimiter.Load().Limit()) }

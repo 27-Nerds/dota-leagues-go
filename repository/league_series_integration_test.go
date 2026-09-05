@@ -4,6 +4,7 @@ import (
 	"context"
 	"dota_league/db"
 	"dota_league/model"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -88,4 +89,12 @@ func TestLeagueSeriesReplacementIsAtomic(t *testing.T) {
 	}
 	assertSeries(1, []int{})
 	assertSeries(2, []int{9})
+	empty, total, err := repo.GetAllByLeague(ctx, 1, 0, 100)
+	if err != nil || total != 0 || empty == nil || len(empty) != 0 {
+		t.Fatalf("empty schedule must be a non-nil empty list: %v total=%d err=%v", empty, total, err)
+	}
+	encoded, err := json.Marshal(empty)
+	if err != nil || string(encoded) != "[]" {
+		t.Fatalf("empty schedule JSON: %s / %v", encoded, err)
+	}
 }

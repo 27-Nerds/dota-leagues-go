@@ -3,11 +3,15 @@ package model
 // Team - Team api and db struct
 type Team struct {
 	Members []struct {
-		AccountID  int    `json:"account_id"`
-		TimeJoined int    `json:"time_joined"`
-		Admin      bool   `json:"admin"`
-		ProName    string `json:"pro_name"`
-		Role       int    `json:"role"`
+		AccountID     int    `json:"account_id"`
+		TimeJoined    int    `json:"time_joined"`
+		Admin         bool   `json:"admin"`
+		ProName       string `json:"pro_name"`
+		AvatarURL     string `json:"avatar_url,omitempty"`
+		SteamLocation string `json:"steam_location,omitempty"`
+		PlayerName    string `json:"player_name,omitempty"`
+		RealName      string `json:"real_name,omitempty"`
+		Role          int    `json:"role"`
 	} `json:"members"`
 	ID                         int          `json:"team_id"`
 	Name                       string       `json:"name"`
@@ -40,11 +44,13 @@ type Team struct {
 
 // DpcResult is a record of team results in a DPC league
 type DpcResult struct {
-	LeagueID  int `json:"league_id"`
-	Standing  int `json:"standing"`
-	Points    int `json:"points"`
-	Earnings  int `json:"earnings"`
-	Timestamp int `json:"timestamp"`
+	LeagueName      string `json:"league_name,omitempty"`
+	LeagueAvailable bool   `json:"league_available"`
+	LeagueID        int    `json:"league_id"`
+	Standing        int    `json:"standing"`
+	Points          int    `json:"points"`
+	Earnings        int    `json:"earnings"`
+	Timestamp       int    `json:"timestamp"`
 }
 
 // MemberStat is a player performance stat for the team

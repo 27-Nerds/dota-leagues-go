@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"dota_league/api"
+	e "dota_league/error"
+	"dota_league/model"
 )
 
 func (dl *DataLoader) performGamesUpdate(ctx context.Context) error {
@@ -10,19 +12,25 @@ func (dl *DataLoader) performGamesUpdate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return dl.applyGamesUpdate(ctx, liveGames.Games)
+}
+
+func (dl *DataLoader) applyGamesUpdate(ctx context.Context, games []model.Game) error {
 	previousGames, err := dl.GameRepository.GetAll(ctx)
 	if err != nil {
 		return err
 	}
 
 	activeLeagues := make(map[int]bool)
-	for _, game := range liveGames.Games {
-		activeLeagues[game.LeagueID] = true
-		dl.LiveGamesManager.AddGame(game)
+	for _, game := range games {
+		if game.LeagueID > 0 {
+			activeLeagues[game.LeagueID] = true
+		}
 	}
+	dl.LiveGamesManager.ReplaceGames(games)
 	finishedLeagues := make(map[int]bool)
 	for _, game := range previousGames {
-		if !activeLeagues[game.LeagueID] {
+		if game.LeagueID > 0 && !activeLeagues[game.LeagueID] {
 			finishedLeagues[game.LeagueID] = true
 		}
 	}
@@ -41,7 +49,7 @@ func (dl *DataLoader) performGamesUpdate(ctx context.Context) error {
 		}
 	}
 	for leagueID := range finishedLeagues {
-		if err := dl.LeagueDetailsRepository.UpdateLiveStatus(ctx, leagueID, false); err != nil {
+		if err := dl.LeagueDetailsRepository.UpdateLiveStatus(ctx, leagueID, false); err != nil && !e.IsNotFound(err) {
 			return err
 		}
 	}
@@ -50,8 +58,8 @@ func (dl *DataLoader) performGamesUpdate(ctx context.Context) error {
 	if err := dl.GameRepository.RemoveAll(ctx); err != nil {
 		return err
 	}
-	if len(liveGames.Games) == 0 {
+	if len(games) == 0 {
 		return nil
 	}
-	return dl.GameRepository.StoreAll(ctx, liveGames.Games)
+	return dl.GameRepository.StoreAll(ctx, games)
 }

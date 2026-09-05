@@ -10,7 +10,7 @@ import (
 
 // channelBuffer absorbs short bursts; producers wait when consumers fall behind.
 const channelBuffer = 1024
-const detailsRefreshInterval = 24 * time.Hour
+const detailsRefreshInterval = 2 * time.Hour
 
 // DataLoader owns the background refresh jobs and their shutdown.
 type DataLoader struct {
@@ -26,8 +26,11 @@ type DataLoader struct {
 	LoadTeam                  chan int
 	LoadSinglePlayer          chan int
 	LiveGamesManager          *LiveGamesManager
-	cancel                    context.CancelFunc
-	wg                        sync.WaitGroup
+	Updates                   UpdatesStore
+	// missingPlayers is owned by the single player queue consumer.
+	missingPlayers map[int]time.Time
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
 }
 
 // NewDataLoader starts refresh jobs that live until ctx is canceled or Stop is called.
@@ -41,6 +44,7 @@ func NewDataLoader(
 	trr TeamRosterRepository,
 	lsr LeagueSeriesRepository,
 	lgdr LiveGameDetailsRepository,
+	updates UpdatesStore,
 ) *DataLoader {
 	ctx, cancel := context.WithCancel(ctx)
 	dl := &DataLoader{
@@ -52,6 +56,7 @@ func NewDataLoader(
 		LoadTeam:          make(chan int, channelBuffer),
 		LoadSinglePlayer:  make(chan int, channelBuffer),
 		cancel:            cancel,
+		Updates:           updates,
 	}
 	dl.LiveGamesManager = NewLiveGamesManager(ctx, lgdr)
 	dl.wg.Go(func() { consume(ctx, "league details", dl.LoadLeagueDetails, dl.storeLeagueDetails) })
@@ -63,10 +68,15 @@ func NewDataLoader(
 		if ctx.Err() != nil {
 			return
 		}
-		dl.wg.Go(func() { runPeriodic(ctx, "leagues", 2*time.Second, 12*time.Hour, dl.performLeaguesUpdate) })
+		dl.wg.Go(func() { runPeriodic(ctx, "leagues", 2*time.Second, 2*time.Hour, dl.performLeaguesUpdate) })
+		dl.wg.Go(func() {
+			runPeriodic(ctx, "historical leagues", 30*time.Second, 10*time.Minute, dl.performHistoricalLeaguesUpdate)
+		})
+		dl.wg.Go(func() { runPeriodic(ctx, "teams", 20*time.Second, 10*time.Minute, dl.performTeamsUpdate) })
 		dl.wg.Go(func() { runPeriodic(ctx, "games", time.Minute, time.Minute, dl.performGamesUpdate) })
 		dl.wg.Go(func() { runPeriodic(ctx, "prizepool", time.Hour, time.Hour, dl.performPrizePoolUpdate) })
-		dl.wg.Go(func() { runPeriodic(ctx, "players", 10*time.Second, 12*time.Hour, dl.performPlayersUpdate) })
+		dl.wg.Go(func() { runPeriodic(ctx, "steam profiles", 45*time.Second, time.Minute, dl.performSteamProfilesUpdate) })
+		dl.wg.Go(func() { runPeriodic(ctx, "players", 10*time.Second, 2*time.Hour, dl.performPlayersUpdate) })
 	})
 	return dl
 }

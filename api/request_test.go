@@ -3,14 +3,51 @@ package api
 import (
 	"context"
 	"errors"
+	"golang.org/x/time/rate"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
+
+func TestInteractiveRequestDoesNotWaitBehindBackgroundBacklog(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		previous := valveLimiter.Load()
+		defer valveLimiter.Store(previous)
+		previousGate := backgroundRequests
+		backgroundRequests = make(chan struct{}, 1)
+		defer func() { backgroundRequests = previousGate }()
+		limiter := rate.NewLimiter(1, 1)
+		valveLimiter.Store(limiter)
+		if !limiter.Allow() {
+			t.Fatal("initial token unavailable")
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		var workers sync.WaitGroup
+		for range 30 {
+			workers.Go(func() { _ = waitForValve(ctx, false) })
+		}
+		synctest.Wait()
+		start := time.Now()
+		if err := waitForValve(ctx, true); err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(start); elapsed != 2*time.Second {
+			t.Fatalf("interactive wait = %s; want 2s while respecting the shared 1 RPS limit", elapsed)
+		}
+		cancel()
+		workers.Wait()
+		if len(backgroundRequests) != 0 {
+			t.Fatal("cancelled workers leaked the background gate")
+		}
+	})
+}
 
 func TestRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())

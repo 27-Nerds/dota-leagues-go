@@ -1,0 +1,73 @@
+name: dota-leagues
+services:
+  app:
+    build: .
+    image: dota-leagues:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${APP_PORT:-1323}:1323"
+    environment:
+      SITE_URL: ${SITE_URL:-http://localhost:1323}
+      GA_MEASUREMENT_ID: ${GA_MEASUREMENT_ID:-}
+      DOTA_PRODUCTION_DATABASE_URL: http://arangodb:8529
+      DOTA_PRODUCTION_DATABASE_USER: root
+      DOTA_PRODUCTION_DATABASE_PASS: ${ARANGO_ROOT_PASSWORD:?Set ARANGO_ROOT_PASSWORD in .env}
+      DOTA_PRODUCTION_DATABASE_NAME: dota_leagues
+      DOTA_PRODUCTION_SERVER_ADDRESS: :1323
+      DOTA_PRODUCTION_CORS_ORIGIN: ${SITE_URL:-http://localhost:1323}
+      DOTA_PRODUCTION_VALVE_RPS: ${VALVE_RPS:-1.0}
+      ASSET_DIR: /data
+    volumes:
+      - logos:/data
+    depends_on:
+      arangodb:
+        condition: service_healthy
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  arangodb:
+    image: arangodb/arangodb:3.12
+    restart: unless-stopped
+    environment:
+      ARANGO_ROOT_PASSWORD: ${ARANGO_ROOT_PASSWORD:?Set ARANGO_ROOT_PASSWORD in .env}
+    volumes:
+      - database:/var/lib/arangodb3
+      - database_apps:/var/lib/arangodb3-apps
+    healthcheck:
+      test: ["CMD-SHELL", "arangosh --server.endpoint tcp://127.0.0.1:8529 --server.username root --server.password \"$$ARANGO_ROOT_PASSWORD\" --javascript.execute-string 'db._version();' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [https]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  database:
+  database_apps:
+  logos:
+  caddy_data:
+  caddy_config:

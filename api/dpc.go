@@ -15,7 +15,7 @@ func LoadDPCStandings(ctx context.Context) (*model.DPCStandings, error) {
 	const op = "api.LoadDPCStandings"
 
 	url := "https://www.dota2.com/webapi/IDOTA2DPC/GetDPCStandings/v001"
-	body, err := doRequest(ctx, url)
+	body, err := doInteractiveRequest(ctx, url)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}

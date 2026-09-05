@@ -17,13 +17,13 @@ type StandingsService interface {
 
 // TeamsService supplies the data required by HTTP endpoints.
 type TeamsService interface {
-	GetAll(ctx context.Context, offset int, limit int) ([]model.Team, int64, error)
+	GetAll(ctx context.Context, offset int, limit int, filter model.TeamFilter) ([]model.Team, int64, error)
 	GetByID(ctx context.Context, id string) (*model.Team, error)
 }
 
 // LeaguesService supplies the data required by HTTP endpoints.
 type LeaguesService interface {
-	GetAllActive(ctx context.Context, offset int, limit int) ([]model.LeagueDetails, int64, error)
+	GetAll(ctx context.Context, offset int, limit int, filter model.LeagueFilter) ([]model.LeagueDetails, int64, error)
 	GetByID(ctx context.Context, id string) (*model.LeagueDetails, error)
 	GetSeries(ctx context.Context, id string, offset int, limit int) ([]model.LeagueSeries, int64, error)
 }
@@ -36,4 +36,9 @@ type LeagueResultsService interface {
 // GamesService supplies the data required by HTTP endpoints.
 type GamesService interface {
 	GetLiveLeagueGames(ctx context.Context, leagueID string, offset int, limit int) ([]model.Game, int64, error)
+}
+
+// MatchSitemapService enumerates stored schedule matches without fetching each match from Valve.
+type MatchSitemapService interface {
+	GetSitemapMatches(context.Context, int, int) ([]model.MatchReference, int64, error)
 }

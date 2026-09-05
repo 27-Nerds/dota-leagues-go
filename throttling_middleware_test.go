@@ -29,6 +29,9 @@ func TestStaticFilesDoNotConsumeAPIQuota(t *testing.T) {
 	e.GET("/leagues/:id", func(c echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
+	e.GET("/teams/:id", func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
 
 	request := func(method, path string, want int) {
 		t.Helper()
@@ -43,10 +46,13 @@ func TestStaticFilesDoNotConsumeAPIQuota(t *testing.T) {
 
 	for range 30 {
 		request(http.MethodGet, "/20067/logo.png", http.StatusOK)
+		request(http.MethodGet, "/teams/2163/logo.png", http.StatusOK)
 	}
 	request(http.MethodGet, "/leagues/20067", http.StatusOK)
 	request(http.MethodGet, "/leagues/20067", http.StatusTooManyRequests)
 	request(http.MethodGet, "/leagues/logo.png", http.StatusTooManyRequests)
+	request(http.MethodGet, "/teams/2163", http.StatusTooManyRequests)
+	request(http.MethodGet, "/teams/2163/logo.png", http.StatusOK)
 	request(http.MethodGet, "/20067/logo.png", http.StatusOK)
 	request(http.MethodGet, "/19979/logo.png", http.StatusOK)
 	request(http.MethodGet, "/20067/missing.png", http.StatusNotFound)

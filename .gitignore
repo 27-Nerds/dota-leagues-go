@@ -41,3 +41,11 @@ dotaleagues
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 app.log
+
+# Local Compose configuration
+.env
+.env.*
+!.env.example
+
+# Local repository history backups
+.local-backups/

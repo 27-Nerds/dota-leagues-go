@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,14 +47,17 @@ func GetConfigInt(key string) int {
 func GetConfigFloat(key string) float64 {
 	key = fmt.Sprintf("%s.%s", ENVIRONMENT, key)
 
-	if v, ok := viper.Get(key).(float64); ok {
-		return v
+	if viper.IsSet(key) {
+		return viper.GetFloat64(key)
 	}
 
 	return 1.5
 }
 
 func init() {
+	viper.SetEnvPrefix("DOTA")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
 	//set default values
 	viper.SetDefault("cors.origin", "*")
 	viper.SetDefault("valve.rps", 1.5)
@@ -88,6 +92,7 @@ func run() error {
 	defer cancel()
 
 	prodFlag := flag.Bool("production", false, "run in production mode")
+	indexesFlag := flag.Bool("create-indexes", false, "create missing database indexes and exit without starting collectors or HTTP")
 	flag.Parse()
 
 	if *prodFlag {
@@ -100,6 +105,15 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}
+	if err := db.EnsureIndexes(ctx); err != nil {
+		return fmt.Errorf("initialize database indexes: %w", err)
+	}
+	if *indexesFlag {
+		return nil
+	}
+	if err := db.EnsureCoreCollections(ctx); err != nil {
+		return fmt.Errorf("initialize database collections: %w", err)
+	}
 	leagueRepository := repository.NewLeagueRepository(db)
 	leagueDetailsRepository := repository.NewLeagueDetailsRepository(db)
 	gameRepository := repository.NewGameRepository(db)
@@ -108,7 +122,16 @@ func run() error {
 	teamRosterRepository := repository.NewTeamRosterRepository(db)
 	leagueSeriesRepository := repository.NewLeagueSeriesRepository(db)
 	liveGameDetailsRepository := repository.NewLiveGameDetailsRepository(db)
+	updatesRepository := repository.NewUpdatesRepository(db)
+	if err := db.EnsureUpdatesCollection(ctx); err != nil {
+		return fmt.Errorf("initialize updates feed: %w", err)
+	}
 
+	sourcesRepository := repository.NewSourceRepository(db)
+	if err := db.EnsureSourceCollections(ctx); err != nil {
+		return fmt.Errorf("initialize source archive: %w", err)
+	}
+	api.SetSourceRecorder(sourcesRepository)
 	api.SetValveRateLimit(GetConfigFloat(`valve.rps`))
 
 	loader := worker.NewDataLoader(
@@ -121,6 +144,7 @@ func run() error {
 		teamRosterRepository,
 		leagueSeriesRepository,
 		liveGameDetailsRepository,
+		updatesRepository,
 	)
 	defer loader.Stop()
 
@@ -148,7 +172,8 @@ func run() error {
 	}))
 
 	// Routes
-	delivery.NewStaticDelivery(e, "./public")
+	delivery.NewStaticDelivery(e, "./public", os.Getenv("ASSET_DIR"))
+	e.GET("/healthz", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
 
 	dpcStandingsRepository := repository.NewDPCStandingsRepository(db)
 	dpcResultsRepository := repository.NewDPCResultsRepository(db)
@@ -159,17 +184,20 @@ func run() error {
 	teamsHandler := handler.NewTeamsHandler(teamRepository)
 	dpcHandler := handler.NewDPCHandler(dpcStandingsRepository, api.LoadDPCStandings)
 	dpcResultsHandler := handler.NewDPCResultsHandler(dpcResultsRepository, api.LoadDPCLeagueResults)
-	matchMinimalHandler := handler.NewMatchMinimalHandler(matchMinimalRepository, api.LoadMatchMinimal)
+	matchMinimalHandler := handler.NewMatchMinimalHandler(matchMinimalRepository, playerRepository, api.LoadMatchMinimal)
 
 	delivery.NewLeaguesDelivery(e, leaguesHandler, gamesHandler)
 	delivery.NewTeamsDelivery(e, teamsHandler)
+	updatesHandler := handler.NewUpdatesHandler(updatesRepository)
+	delivery.NewUpdatesDelivery(e, updatesHandler)
+	delivery.NewSourceDelivery(e, sourcesRepository)
 	delivery.NewDPCDelivery(e, dpcHandler, dpcResultsHandler, matchMinimalHandler)
 
 	siteURL := os.Getenv("SITE_URL")
 	if siteURL == "" {
 		siteURL = "https://dota-leagues.27n.gg"
 	}
-	if err := delivery.NewPagesDelivery(e, leaguesHandler, teamsHandler, matchMinimalHandler, dpcHandler, "./public/index.html", siteURL); err != nil {
+	if err := delivery.NewPagesDelivery(e, leaguesHandler, teamsHandler, matchMinimalHandler, dpcHandler, updatesHandler, leagueSeriesRepository, "./public/index.html", siteURL, os.Getenv("GA_MEASUREMENT_ID")); err != nil {
 		return fmt.Errorf("configure page routes: %w", err)
 	}
 

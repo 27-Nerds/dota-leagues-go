@@ -74,7 +74,7 @@ RETURN {league_id: s.league_id, series_id: s.series_id, series_type: s.series_ty
 		"limit":  limit,
 	}
 
-	var series []model.LeagueSeries
+	series := []model.LeagueSeries{}
 	var totalCount int64
 
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -102,4 +102,40 @@ RETURN {league_id: s.league_id, series_id: s.series_id, series_type: s.series_ty
 	totalCount = int64(cursor.Statistics().FullCountInt)
 
 	return series, totalCount, nil
+}
+
+// GetSitemapMatches lists unique stored schedule URLs; it never fetches match details.
+func (rs *LeagueSeriesRepository) GetSitemapMatches(ctx context.Context, offset, limit int) ([]model.MatchReference, int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	query := `FOR s IN league_series
+ FILTER s.league_id > 0
+ FOR raw IN (IS_ARRAY(s.match_ids) ? s.match_ids : [])
+ LET candidateID = TO_STRING(raw)
+ FILTER REGEX_TEST(candidateID, "^[1-9][0-9]{0,19}$")
+ COLLECT leagueID = s.league_id, matchID = candidateID
+ SORT leagueID ASC, matchID ASC
+ LIMIT @offset, @limit
+ RETURN {league_id: leagueID, match_id: matchID}`
+	cursor, err := rs.Conn.QueryAll(ctx, query, map[string]any{"offset": offset, "limit": limit}, true)
+	if e.IsNotFound(err) {
+		return []model.MatchReference{}, 0, nil
+	}
+	if err != nil {
+		return nil, 0, &e.Error{Op: "LeagueSeriesRepository.GetSitemapMatches", Err: err}
+	}
+	defer db.CloseCursor(cursor)
+	rows := []model.MatchReference{}
+	for {
+		var row model.MatchReference
+		_, err := cursor.ReadDocument(ctx, &row)
+		if driver.IsNoMoreDocuments(err) {
+			break
+		}
+		if err != nil {
+			return nil, 0, &e.Error{Op: "LeagueSeriesRepository.GetSitemapMatches", Err: err}
+		}
+		rows = append(rows, row)
+	}
+	return rows, int64(cursor.Statistics().FullCountInt), nil
 }

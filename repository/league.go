@@ -48,12 +48,36 @@ func (lr *LeagueRepository) StoreAll(ctx context.Context, leagues []model.League
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	err := lr.Conn.InsertMany(ctx, "leagues", leagues)
+	hasRecords, err := lr.HasAnyRecord(ctx)
+	if err != nil {
+		return err
+	}
+	if !hasRecords {
+		return lr.Conn.InsertMany(ctx, "leagues", leagues)
+	}
+	err = lr.Conn.DoQueryBuilder(ctx, `FOR league IN @leagues
+UPSERT { _key: league._key } INSERT league UPDATE league IN leagues`, map[string]any{"leagues": leagues})
 	if err != nil {
 		return &e.Error{Op: "LeagueRepository.StoreAll", Err: err}
 	}
 
 	return nil
+}
+
+// GetMissingHistorical selects a bounded archive batch, prioritizing TI.
+func (lr *LeagueRepository) GetMissingHistorical(ctx context.Context) ([]int, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	var ids []int
+	_, err := lr.Conn.Query(ctx, `RETURN (
+FOR d IN leagues
+ FILTER d.status == 5 || d.end_timestamp < @now
+ LET detail = DOCUMENT("league_details", TO_STRING(d.league_id))
+ FILTER detail == null || (detail.status != d.status && detail.updated_timestamp < @retryBefore)
+ SORT (d.tier == 5) DESC, d.end_timestamp DESC, d.tier DESC, d.league_id ASC
+ LIMIT 100 RETURN d.league_id
+)`, map[string]any{"now": time.Now().Unix(), "retryBefore": time.Now().Add(-24 * time.Hour).Unix()}, &ids)
+	return ids, err
 }
 
 // ExistsByID - check wether record exists in the DB
@@ -136,7 +160,7 @@ func (lr *LeagueRepository) HasAnyRecord(ctx context.Context) (bool, error) {
 // GetAllActive returns all leagues where end_timestamp is greater than current date
 func (lr *LeagueRepository) GetAllActive(ctx context.Context) ([]model.LeagueDetails, error) {
 
-	query := "FOR d IN leagues FILTER d.end_timestamp >= @today SORT d.tier DESC RETURN d"
+	query := "FOR d IN leagues FILTER d.end_timestamp >= @today && d.status != 5 SORT d.tier DESC RETURN d"
 	bindVars := map[string]any{
 		"today": time.Now().Unix(),
 	}

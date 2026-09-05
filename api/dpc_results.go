@@ -14,7 +14,7 @@ func LoadDPCLeagueResults(ctx context.Context, leagueID int) (*model.DPCLeagueRe
 	const op = "api.LoadDPCLeagueResults"
 
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2DPC/GetLeagueResults/v001?league_id=%d", leagueID)
-	body, err := doRequest(ctx, url)
+	body, err := doInteractiveRequest(ctx, url)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
@@ -33,7 +33,7 @@ func LoadMatchMinimal(ctx context.Context, leagueID int, matchID string) (*model
 	const op = "api.LoadMatchMinimal"
 
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2DPC/GetLeagueMatchMinimal/v001?league_id=%d&match_id=%s", leagueID, matchID)
-	body, err := doRequest(ctx, url)
+	body, err := doInteractiveRequest(ctx, url)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}

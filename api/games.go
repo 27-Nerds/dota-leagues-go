@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	e "dota_league/error"
 	"dota_league/model"
@@ -43,8 +44,8 @@ func GetLiveGameStats(ctx context.Context, serverSteamID string) (*model.LiveGam
 	}
 
 	//sometimes api returns null
-	if string(responseData) == "null" {
-		return nil, &e.Error{Code: e.EINTERNAL, Op: "api.GetLiveGameStats - null response recieved"}
+	if bytes.Equal(bytes.TrimSpace(responseData), []byte("null")) {
+		return nil, &e.Error{Code: e.ENOTFOUND, Op: op, Message: "Realtime stats not available"}
 	}
 
 	liveGamesDetailsJSON := model.LiveGameDetails{}
@@ -54,5 +55,8 @@ func GetLiveGameStats(ctx context.Context, serverSteamID string) (*model.LiveGam
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
+	if liveGamesDetailsJSON.Match.Matchid == "" || liveGamesDetailsJSON.Match.Matchid == "0" {
+		return nil, &e.Error{Code: e.ENOTFOUND, Op: op, Message: "Realtime stats not available"}
+	}
 	return &liveGamesDetailsJSON, nil
 }
