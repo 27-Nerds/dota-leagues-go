@@ -49,3 +49,4 @@ app.log
 
 # Local repository history backups
 .local-backups/
+.superdesign/init
