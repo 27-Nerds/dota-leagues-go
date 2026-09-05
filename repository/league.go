@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/arangodb/go-driver"
+	driver "github.com/arangodb/go-driver/v2/arangodb/shared"
 )
 
 // LeagueRepository repository object
@@ -22,9 +22,9 @@ func NewLeagueRepository(Conn Database) *LeagueRepository {
 }
 
 // Store store league model in db
-func (lr *LeagueRepository) Store(l *model.League) error {
+func (lr *LeagueRepository) Store(ctx context.Context, l *model.League) error {
 	l.DBKey = strconv.Itoa(l.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := lr.Conn.Insert(ctx, "leagues", l)
@@ -38,17 +38,17 @@ func (lr *LeagueRepository) Store(l *model.League) error {
 }
 
 // StoreAll - store array of records in one batch
-func (lr *LeagueRepository) StoreAll(leagues *[]model.League) error {
+func (lr *LeagueRepository) StoreAll(ctx context.Context, leagues []model.League) error {
 	// set db keys for all elements
-	for i, league := range *leagues {
-		(*leagues)[i].DBKey = strconv.Itoa(league.ID)
+	for i, league := range leagues {
+		leagues[i].DBKey = strconv.Itoa(league.ID)
 	}
 
 	// is 2 seconds enough?
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	err := lr.Conn.InsertMany(ctx, "leagues", *leagues)
+	err := lr.Conn.InsertMany(ctx, "leagues", leagues)
 	if err != nil {
 		return &e.Error{Op: "LeagueRepository.StoreAll", Err: err}
 	}
@@ -57,9 +57,9 @@ func (lr *LeagueRepository) StoreAll(leagues *[]model.League) error {
 }
 
 // ExistsByID - check wether record exists in the DB
-func (lr *LeagueRepository) ExistsByID(id int) (bool, error) {
+func (lr *LeagueRepository) ExistsByID(ctx context.Context, id int) (bool, error) {
 
-	exists, err := existsInColByID(lr.Conn, "leagues", strconv.Itoa(id))
+	exists, err := existsInColByID(ctx, lr.Conn, "leagues", strconv.Itoa(id))
 	if err != nil {
 		return false, &e.Error{Op: "LeagueRepository.ExistsByID", Err: err}
 	}
@@ -68,16 +68,16 @@ func (lr *LeagueRepository) ExistsByID(id int) (bool, error) {
 }
 
 // GetByDateRange - returns array of Leagues from the db. StartDate and EndDate are timestamps
-func (lr *LeagueRepository) GetByDateRange(startDate int64, endDate int64) (*[]model.League, error) {
+func (lr *LeagueRepository) GetByDateRange(ctx context.Context, startDate int64, endDate int64) ([]model.League, error) {
 	query := "FOR d IN leagues FILTER d.most_recent_activity >= @startDate && d.most_recent_activity <= @endDate RETURN d"
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"startDate": startDate,
 		"endDate":   endDate,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	cursor, err := lr.Conn.QueryAll(ctx, query, bindVars)
+	cursor, err := lr.Conn.QueryAll(ctx, query, bindVars, false)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueRepository.GetByDateRange", Err: err}
 	}
@@ -97,16 +97,16 @@ func (lr *LeagueRepository) GetByDateRange(startDate int64, endDate int64) (*[]m
 		leagues = append(leagues, doc)
 	}
 
-	return &leagues, nil
+	return leagues, nil
 }
 
 // GetFromYearStart - get all tourneys in the current year
-func (lr *LeagueRepository) GetFromYearStart() (*[]model.League, error) {
+func (lr *LeagueRepository) GetFromYearStart(ctx context.Context) ([]model.League, error) {
 	now := time.Now()
 	currentYear, _, _ := now.Date()
 	firstOfYear := time.Date(currentYear, 1, 1, 0, 0, 0, 0, now.Location())
 
-	leagues, err := lr.GetByDateRange(firstOfYear.Unix(), now.Unix())
+	leagues, err := lr.GetByDateRange(ctx, firstOfYear.Unix(), now.Unix())
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueRepository.GetFromYearStart", Err: err}
 	}
@@ -115,11 +115,11 @@ func (lr *LeagueRepository) GetFromYearStart() (*[]model.League, error) {
 }
 
 // HasAnyRecord return true if there are at least one record in the DB
-func (lr *LeagueRepository) HasAnyRecord() (bool, error) {
+func (lr *LeagueRepository) HasAnyRecord(ctx context.Context) (bool, error) {
 	query := "RETURN LENGTH(FOR d IN leagues LIMIT 1 RETURN true) > 0"
 	var exists bool
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	_, err := lr.Conn.Query(ctx, query, nil, &exists)
 	if e.IsNotFound(err) {
@@ -134,16 +134,16 @@ func (lr *LeagueRepository) HasAnyRecord() (bool, error) {
 }
 
 // GetAllActive returns all leagues where end_timestamp is greater than current date
-func (lr *LeagueRepository) GetAllActive() (*[]model.LeagueDetails, error) {
+func (lr *LeagueRepository) GetAllActive(ctx context.Context) ([]model.LeagueDetails, error) {
 
 	query := "FOR d IN leagues FILTER d.end_timestamp >= @today SORT d.tier DESC RETURN d"
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"today": time.Now().Unix(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	cursor, err := lr.Conn.QueryAll(ctx, query, bindVars)
+	cursor, err := lr.Conn.QueryAll(ctx, query, bindVars, false)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueRepository.GetAllActive", Err: err}
 	}
@@ -162,5 +162,5 @@ func (lr *LeagueRepository) GetAllActive() (*[]model.LeagueDetails, error) {
 		leagues = append(leagues, doc)
 	}
 
-	return &leagues, nil
+	return leagues, nil
 }

@@ -20,12 +20,12 @@ func NewDPCResultsRepository(Conn Database) *DPCResultsRepository {
 }
 
 // Store upserts the stored results snapshot for a league
-func (r *DPCResultsRepository) Store(leagueID int, res *model.DPCLeagueResults) error {
+func (r *DPCResultsRepository) Store(ctx context.Context, leagueID int, res *model.DPCLeagueResults) error {
 	const op = "DPCResultsRepository.Store"
 
 	key := strconv.Itoa(leagueID)
 	res.DBKey = key
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := r.Conn.Insert(ctx, dpcResultsCollection, res)
@@ -39,14 +39,14 @@ func (r *DPCResultsRepository) Store(leagueID int, res *model.DPCLeagueResults) 
 }
 
 // Get returns the stored results snapshot for a league
-func (r *DPCResultsRepository) Get(leagueID int) (*model.DPCLeagueResults, error) {
+func (r *DPCResultsRepository) Get(ctx context.Context, leagueID int) (*model.DPCLeagueResults, error) {
 	const op = "DPCResultsRepository.Get"
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	var res model.DPCLeagueResults
-	_, err := r.Conn.Query(ctx, "FOR d IN "+dpcResultsCollection+" FILTER d._key == @id RETURN d", map[string]interface{}{
+	_, err := r.Conn.Query(ctx, "FOR d IN "+dpcResultsCollection+" FILTER d._key == @id RETURN d", map[string]any{
 		"id": strconv.Itoa(leagueID),
 	}, &res)
 	if err != nil {

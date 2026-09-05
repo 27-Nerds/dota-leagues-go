@@ -1,142 +1,104 @@
 package worker
 
 import (
+	"context"
 	"dota_league/api"
 	"dota_league/model"
-	"log"
+	"log/slog"
+	"sync"
 	"time"
 )
 
-const (
-	timeout = 200 * time.Second
-)
+const liveGameTimeout = 200 * time.Second
 
-// LiveGamesManager manages structs for every live game
+// LiveGamesManager owns one polling worker per server. The mutex protects only
+// membership and shutdown; API and database calls always happen outside the lock.
 type LiveGamesManager struct {
-	liveGames                 map[string]*LiveGame
-	liveGameDetailsRepository LiveGameDetailsRepository
-	gameEndedChannel          chan string
+	mu        sync.Mutex
+	liveGames map[string]struct{}
+	stopped   bool
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	repo      LiveGameDetailsRepository
+	load      func(context.Context, string) (*model.LiveGameDetails, error)
 }
 
-func NewLiveGamesManager(liveGameDetailsRepository LiveGameDetailsRepository) *LiveGamesManager {
-	log.Println("Live Game Manager started")
-	lgm := &LiveGamesManager{
-		liveGames:                 make(map[string]*LiveGame),
-		liveGameDetailsRepository: liveGameDetailsRepository,
-		gameEndedChannel:          make(chan string),
-	}
-	go lgm.updateGames()
-	go lgm.gameEndedListener()
-
-	return lgm
-}
-
-func (lgm *LiveGamesManager) AddGame(game model.Game) {
-	_, ex := lgm.liveGames[game.ServerSteamID]
-	// create new game if it not exists
-	if !ex {
-		lgm.liveGames[game.ServerSteamID] = NewLiveGame(game, lgm.liveGameDetailsRepository, lgm.gameEndedChannel)
+func NewLiveGamesManager(ctx context.Context, repo LiveGameDetailsRepository) *LiveGamesManager {
+	ctx, cancel := context.WithCancel(ctx)
+	return &LiveGamesManager{
+		ctx: ctx, cancel: cancel, repo: repo,
+		liveGames: make(map[string]struct{}),
+		load:      api.GetLiveGameStats,
 	}
 }
 
-func (lgm *LiveGamesManager) updateGames() {
-	for {
-		for serverSteamID, liveGame := range lgm.liveGames {
-			liveGameDetails, err := api.GetLiveGameStats(serverSteamID)
-			if err != nil {
-				log.Printf("updateLiveGameData error for %s. %v", serverSteamID, err)
-			} else {
-				liveGame.NewDataChan <- liveGameDetails
-
-				time.Sleep(2 * time.Second)
-			}
-		}
-
-		time.Sleep(3 * time.Second)
+func (m *LiveGamesManager) AddGame(game model.Game) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.stopped || m.ctx.Err() != nil {
+		return
 	}
-
-}
-
-func (lgm *LiveGamesManager) gameEndedListener() {
-	for gameID := range lgm.gameEndedChannel {
-		delete(lgm.liveGames, gameID)
+	id := game.ServerSteamID
+	if _, exists := m.liveGames[id]; exists {
+		return
 	}
+	m.liveGames[id] = struct{}{}
+	// Register the task while holding the same lock Stop uses before waiting.
+	m.wg.Go(func() { m.poll(id) })
 }
 
-// LiveGame struct
-type LiveGame struct {
-	game                      model.Game
-	liveGameDetailsRepository LiveGameDetailsRepository
-	timeoutTicker             *time.Ticker
-	gameEndedChannel          chan string
-	NewDataChan               chan *model.LiveGameDetails
+// Stop prevents new games, cancels in-flight requests, and joins all polling workers.
+func (m *LiveGamesManager) Stop() {
+	m.mu.Lock()
+	m.stopped = true
+	m.cancel()
+	m.mu.Unlock()
+	m.wg.Wait()
 }
 
-// NewLiveGame create new live game for given id
-func NewLiveGame(game model.Game, liveGameDetailsRepository LiveGameDetailsRepository, gameEndedChannel chan string) *LiveGame {
-	log.Println("Adding new live game:", game.ServerSteamID)
-
-	liveGame := &LiveGame{
-		game:                      game,
-		liveGameDetailsRepository: liveGameDetailsRepository,
-		timeoutTicker:             time.NewTicker(timeout),
-		gameEndedChannel:          gameEndedChannel,
-		NewDataChan:               make(chan *model.LiveGameDetails),
-	}
-	go liveGame.run()
-
-	return liveGame
-}
-
-func (lg *LiveGame) run() {
-	defer lg.stopGame()
-
+func (m *LiveGamesManager) poll(id string) {
+	defer func() {
+		m.mu.Lock()
+		delete(m.liveGames, id)
+		m.mu.Unlock()
+	}()
+	deadline := time.Now().Add(liveGameTimeout)
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 	for {
 		select {
-		case lgd := <-lg.NewDataChan:
-			//update
-			err := lg.update(lgd)
-			if err == nil {
-				//game update was successful, set new timeout for a game
-				lg.timeoutTicker = time.NewTicker(timeout)
-			}
-		case <-lg.timeoutTicker.C:
-			//close in case of the timeout
-			log.Println("timeout for game:", lg.game.ServerSteamID)
+		case <-m.ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if m.ctx.Err() != nil || !time.Now().Before(deadline) {
 			return
 		}
+		// The inactivity deadline also bounds a stalled request or database write.
+		ctx, cancel := context.WithDeadline(m.ctx, deadline)
+		details, err := m.load(ctx, id)
+		if err == nil {
+			err = m.store(ctx, details)
+		}
+		cancel()
+		if err == nil {
+			deadline = time.Now().Add(liveGameTimeout)
+		} else if m.ctx.Err() == nil {
+			slog.WarnContext(m.ctx, "live game refresh failed", "server_id", id, "error", err)
+		}
+		timer.Reset(min(3*time.Second, max(0, time.Until(deadline))))
 	}
 }
 
-func (lg *LiveGame) stopGame() {
-	log.Println(lg.game.ServerSteamID, "ended")
-	lg.gameEndedChannel <- lg.game.ServerSteamID
-}
-
-func (lg *LiveGame) update(lgd *model.LiveGameDetails) error {
-
-	lgd.DBKey = lgd.Match.Matchid
-	exist, err := lg.liveGameDetailsRepository.ExistsByID(lgd.Match.Matchid)
+func (m *LiveGamesManager) store(ctx context.Context, details *model.LiveGameDetails) error {
+	details.DBKey = details.Match.Matchid
+	exists, err := m.repo.ExistsByID(ctx, details.Match.Matchid)
 	if err != nil {
-		log.Printf("updateLiveGameData ExistsByID error for %s. %v", lg.game.ServerSteamID, err)
-
 		return err
 	}
-	if !exist {
-		err = lg.liveGameDetailsRepository.Store(lgd)
-		if err != nil {
-			log.Printf("updateLiveGameData store error for %s. %v", lg.game.ServerSteamID, err)
-
-			return err
-		}
-	} else {
-		err = lg.liveGameDetailsRepository.Update(lgd)
-		if err != nil {
-			log.Printf("updateLiveGameData store error for %s. %v", lg.game.ServerSteamID, err)
-
-			return err
-		}
+	if exists {
+		return m.repo.Update(ctx, details)
 	}
-
-	return nil
+	return m.repo.Store(ctx, details)
 }

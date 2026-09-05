@@ -7,8 +7,8 @@ import (
 )
 
 type response struct {
-	Meta    *meta       `json:"meta"`
-	Results interface{} `json:"results"`
+	Meta    *meta `json:"meta"`
+	Results any   `json:"results"`
 }
 
 type meta struct {

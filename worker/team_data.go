@@ -1,64 +1,62 @@
 package worker
 
 import (
+	"context"
 	"dota_league/api"
 	"dota_league/model"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 )
 
 // storeTeam gets data from api and stores or updates it in the DB.
 // Teams refreshed within detailsRefreshInterval are skipped to spare the Valve API.
-func (dl *DataLoader) storeTeam(teamID int) error {
+func (dl *DataLoader) storeTeam(ctx context.Context, teamID int) error {
 
-	exist, err := dl.TeamRepository.ExistsByID(teamID)
+	exist, err := dl.TeamRepository.ExistsByID(ctx, teamID)
 	if err != nil {
-		log.Printf("storeTeam: ExistsByID error %s", err)
 		return err
 	}
 
 	if exist {
-		stored, gerr := dl.TeamRepository.GetByID(teamID)
+		stored, gerr := dl.TeamRepository.GetByID(ctx, teamID)
 		switch {
 		case gerr != nil:
-			log.Printf("storeTeam: GetByID(%d) error: %s", teamID, gerr)
+			return gerr
 		case time.Since(time.Unix(stored.UpdatedTimestamp, 0)) < detailsRefreshInterval:
 			return nil
 		}
 	}
 
-	team, err := api.LoadTeamDetails(teamID)
+	team, err := api.LoadTeamDetails(ctx, teamID)
 	if err != nil {
-		log.Printf("storeTeam: LoadTeamDetails error %s", err)
 		return err
 	}
 
-	if err := dl.storeTeamRoster(team); err != nil {
+	if err := dl.storeTeamRoster(ctx, team); err != nil {
 		return err
 	}
 
 	team.UpdatedTimestamp = time.Now().Unix()
 
 	if exist {
-		err = dl.TeamRepository.Update(team)
+		err = dl.TeamRepository.Update(ctx, team)
 	} else {
-		err = dl.TeamRepository.Store(team)
+		err = dl.TeamRepository.Store(ctx, team)
 	}
 	if err != nil {
-		log.Printf("storeTeam: store team error %s", err)
 		return err
 	}
 
-	err = dl.downloadTeamImage(team)
+	err = dl.downloadTeamImage(ctx, team)
 	if err != nil {
-		log.Printf("storeTeam: download image error %s", err)
+		slog.WarnContext(ctx, "download team image", "team_id", teamID, "error", err)
 	}
 
 	return nil
 }
 
-func (dl *DataLoader) downloadTeamImage(team *model.Team) error {
+func (dl *DataLoader) downloadTeamImage(ctx context.Context, team *model.Team) error {
 
 	// skip if logo url is empty
 	if team.URLLogo == "" {
@@ -67,7 +65,7 @@ func (dl *DataLoader) downloadTeamImage(team *model.Team) error {
 
 	path := fmt.Sprintf("public/teams/%d", team.ID)
 
-	err := api.DownloadImageIfNotExist(team.URLLogo, path, "logo.png")
+	err := api.DownloadImageIfNotExist(ctx, team.URLLogo, path, "logo.png")
 	if err != nil {
 		return err
 	}
@@ -75,7 +73,7 @@ func (dl *DataLoader) downloadTeamImage(team *model.Team) error {
 	return nil
 }
 
-func (dl *DataLoader) storeTeamRoster(team *model.Team) error {
+func (dl *DataLoader) storeTeamRoster(ctx context.Context, team *model.Team) error {
 	teamRoster := model.TeamRoster{
 		TeamID: team.ID,
 	}
@@ -86,13 +84,15 @@ func (dl *DataLoader) storeTeamRoster(team *model.Team) error {
 			continue
 		}
 
-		exist, err := dl.PlayerRepository.ExistsByID(member.AccountID)
+		exist, err := dl.PlayerRepository.ExistsByID(ctx, member.AccountID)
 		if err != nil {
 			return err
 		}
 		if !exist {
-			log.Printf("load team member with id: %d", member.AccountID)
-			dl.LoadSinglePlayer <- member.AccountID
+			slog.DebugContext(ctx, "queue team member", "account_id", member.AccountID)
+			if err := enqueue(ctx, dl.LoadSinglePlayer, member.AccountID); err != nil {
+				return err
+			}
 		}
 
 		teamMember := model.TeamMember{
@@ -102,15 +102,15 @@ func (dl *DataLoader) storeTeamRoster(team *model.Team) error {
 		teamRoster.TeamMembers = append(teamRoster.TeamMembers, teamMember)
 	}
 
-	exist, err := dl.TeamRosterRepository.ExistsByTeamID(team.ID)
+	exist, err := dl.TeamRosterRepository.ExistsByTeamID(ctx, team.ID)
 	if err != nil {
 		return err
 	}
 
 	if exist {
-		err = dl.TeamRosterRepository.Update(&teamRoster)
+		err = dl.TeamRosterRepository.Update(ctx, &teamRoster)
 	} else {
-		err = dl.TeamRosterRepository.Store(&teamRoster)
+		err = dl.TeamRosterRepository.Store(ctx, &teamRoster)
 	}
 	if err != nil {
 		return err

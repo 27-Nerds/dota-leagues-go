@@ -34,12 +34,12 @@ func newLeagueDetailsResponse(leagueFromDB *model.LeagueDetails) *LeagueDetailsR
 	}
 }
 
-func generateLeaguesDetailsResponse(leaguesModels *[]model.LeagueDetails) *[]*LeagueDetailsResponse {
+func generateLeaguesDetailsResponse(leaguesModels []model.LeagueDetails) []*LeagueDetailsResponse {
 	leagues := []*LeagueDetailsResponse{}
 
-	for _, leaguesModel := range *leaguesModels {
+	for _, leaguesModel := range leaguesModels {
 		leagues = append(leagues, newLeagueDetailsResponse(&leaguesModel))
 	}
 
-	return &leagues
+	return leagues
 }

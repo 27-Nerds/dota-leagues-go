@@ -7,7 +7,7 @@ import (
 	"dota_league/model"
 	"strconv"
 
-	"github.com/arangodb/go-driver"
+	driver "github.com/arangodb/go-driver/v2/arangodb/shared"
 )
 
 // TeamRepository repository object
@@ -21,9 +21,9 @@ func NewTeamRepository(Conn Database) *TeamRepository {
 }
 
 // Store store team model in db
-func (tr *TeamRepository) Store(team *model.Team) error {
+func (tr *TeamRepository) Store(ctx context.Context, team *model.Team) error {
 	team.DBKey = strconv.Itoa(team.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := tr.Conn.Insert(ctx, "teams", team)
@@ -37,9 +37,9 @@ func (tr *TeamRepository) Store(team *model.Team) error {
 }
 
 // ExistsByID check wether record exists in the DB
-func (tr *TeamRepository) ExistsByID(id int) (bool, error) {
+func (tr *TeamRepository) ExistsByID(ctx context.Context, id int) (bool, error) {
 
-	exists, err := existsInColByID(tr.Conn, "teams", strconv.Itoa(id))
+	exists, err := existsInColByID(ctx, tr.Conn, "teams", strconv.Itoa(id))
 	if err != nil {
 		return false, &e.Error{Op: "TeamRepository.ExistsByID", Err: err}
 	}
@@ -48,9 +48,9 @@ func (tr *TeamRepository) ExistsByID(id int) (bool, error) {
 }
 
 // Update updates an existing team record (partial merge)
-func (tr *TeamRepository) Update(team *model.Team) error {
+func (tr *TeamRepository) Update(ctx context.Context, team *model.Team) error {
 	team.DBKey = strconv.Itoa(team.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := tr.Conn.Update(ctx, "teams", team.DBKey, team)
@@ -62,15 +62,15 @@ func (tr *TeamRepository) Update(team *model.Team) error {
 }
 
 // GetByID get team by id
-func (tr *TeamRepository) GetByID(id int) (*model.Team, error) {
-	bindVars := map[string]interface{}{
+func (tr *TeamRepository) GetByID(ctx context.Context, id int) (*model.Team, error) {
+	bindVars := map[string]any{
 		"id": strconv.Itoa(id),
 	}
 
 	query := "FOR d IN teams FILTER d._key == @id RETURN d"
 
 	var team model.Team
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	_, err := tr.Conn.Query(ctx, query, bindVars, &team)
 	if err != nil {
@@ -81,9 +81,9 @@ func (tr *TeamRepository) GetByID(id int) (*model.Team, error) {
 }
 
 // GetAll returns teams with pagination
-func (tr *TeamRepository) GetAll(offset int, limit int) (*[]model.Team, int64, error) {
+func (tr *TeamRepository) GetAll(ctx context.Context, offset int, limit int) ([]model.Team, int64, error) {
 	query := "FOR d IN teams LIMIT @offset, @limit RETURN d"
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"offset": offset,
 		"limit":  limit,
 	}
@@ -91,11 +91,10 @@ func (tr *TeamRepository) GetAll(offset int, limit int) (*[]model.Team, int64, e
 	var teams []model.Team
 	var totalCount int64
 
-	ct := driver.WithQueryFullCount(context.Background(), true)
-	ctx, cancel := context.WithTimeout(ct, dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	cursor, err := tr.Conn.QueryAll(ctx, query, bindVars)
+	cursor, err := tr.Conn.QueryAll(ctx, query, bindVars, true)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "TeamRepository.GetAll", Err: err}
 	}
@@ -112,6 +111,6 @@ func (tr *TeamRepository) GetAll(offset int, limit int) (*[]model.Team, int64, e
 		teams = append(teams, doc)
 	}
 
-	totalCount = cursor.Statistics().FullCount()
-	return &teams, totalCount, nil
+	totalCount = int64(cursor.Statistics().FullCountInt)
+	return teams, totalCount, nil
 }

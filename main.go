@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"dota_league/api"
 	"dota_league/db"
@@ -60,27 +66,26 @@ func init() {
 	}
 }
 
-func dbConnection() *db.ArangoDB {
-	log.Printf("cs: %+v, %+v, %+v, %+v",
+func dbConnection(ctx context.Context) (*db.ArangoDB, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return db.Connect(ctx,
 		GetConfigStr(`database.url`),
 		GetConfigStr(`database.user`),
 		GetConfigStr(`database.pass`),
 		GetConfigStr(`database.name`))
-
-	db, err := db.Connect(context.Background(),
-		GetConfigStr(`database.url`),
-		GetConfigStr(`database.user`),
-		GetConfigStr(`database.pass`),
-		GetConfigStr(`database.name`))
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
-
-	return db
 }
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("application stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	prodFlag := flag.Bool("production", false, "run in production mode")
 	flag.Parse()
@@ -89,9 +94,12 @@ func main() {
 		ENVIRONMENT = "production"
 	}
 
-	log.Printf("Current Environment: %s", ENVIRONMENT)
+	slog.Info("starting application", "environment", ENVIRONMENT)
 
-	db := dbConnection()
+	db, err := dbConnection(ctx)
+	if err != nil {
+		return fmt.Errorf("connect database: %w", err)
+	}
 	leagueRepository := repository.NewLeagueRepository(db)
 	leagueDetailsRepository := repository.NewLeagueDetailsRepository(db)
 	gameRepository := repository.NewGameRepository(db)
@@ -103,7 +111,8 @@ func main() {
 
 	api.SetValveRateLimit(GetConfigFloat(`valve.rps`))
 
-	_ = worker.NewDataLoader(
+	loader := worker.NewDataLoader(
+		ctx,
 		leagueRepository,
 		leagueDetailsRepository,
 		gameRepository,
@@ -113,6 +122,7 @@ func main() {
 		leagueSeriesRepository,
 		liveGameDetailsRepository,
 	)
+	defer loader.Stop()
 
 	//----------------
 	//START WEB SERVER
@@ -120,9 +130,10 @@ func main() {
 
 	// Echo instance
 	e := echo.New()
+	e.Server.BaseContext = func(net.Listener) context.Context { return ctx }
 
 	// Middleware
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
@@ -137,7 +148,7 @@ func main() {
 	}))
 
 	// Routes
-	e.Static("/", "./public")
+	delivery.NewStaticDelivery(e, "./public")
 
 	dpcStandingsRepository := repository.NewDPCStandingsRepository(db)
 	dpcResultsRepository := repository.NewDPCResultsRepository(db)
@@ -154,6 +165,41 @@ func main() {
 	delivery.NewTeamsDelivery(e, teamsHandler)
 	delivery.NewDPCDelivery(e, dpcHandler, dpcResultsHandler, matchMinimalHandler)
 
-	// Start server
-	e.Logger.Fatal(e.Start(GetConfigStr(`server.address`)))
+	siteURL := os.Getenv("SITE_URL")
+	if siteURL == "" {
+		siteURL = "https://dota-leagues.27n.gg"
+	}
+	if err := delivery.NewPagesDelivery(e, leaguesHandler, teamsHandler, matchMinimalHandler, dpcHandler, "./public/index.html", siteURL); err != nil {
+		return fmt.Errorf("configure page routes: %w", err)
+	}
+
+	serverErrors := make(chan error, 1)
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(ctx, "tcp", GetConfigStr(`server.address`))
+	if err != nil {
+		return fmt.Errorf("listen: %w", err)
+	}
+	e.Server.Handler = e
+	go func() { serverErrors <- e.Server.Serve(listener) }()
+	serverStopped := false
+	select {
+	case err = <-serverErrors:
+		serverStopped = true
+		cancel()
+	case <-ctx.Done():
+	}
+	// Shutdown gets its own deadline because the application context is canceled.
+	shutdownCtx, stopShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stopShutdown()
+	shutdownErr := e.Shutdown(shutdownCtx)
+	if shutdownErr != nil {
+		shutdownErr = errors.Join(shutdownErr, e.Close())
+	}
+	if !serverStopped {
+		err = <-serverErrors
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		err = nil
+	}
+	return errors.Join(err, shutdownErr)
 }

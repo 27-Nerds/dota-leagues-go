@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	e "dota_league/error"
 	"dota_league/model"
 	"strconv"
@@ -17,9 +18,9 @@ func NewTeamsHandler(trr TeamReader) *TeamsHandler {
 	}
 }
 
-func (th *TeamsHandler) GetAll(offset int, limit int) (*[]model.Team, int64, error) {
+func (th *TeamsHandler) GetAll(ctx context.Context, offset int, limit int) ([]model.Team, int64, error) {
 
-	teamsFromDB, totalCount, err := th.TeamRepository.GetAll(offset, limit)
+	teamsFromDB, totalCount, err := th.TeamRepository.GetAll(ctx, offset, limit)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "TeamsHandler.GetAll", Err: err}
 	}
@@ -28,14 +29,14 @@ func (th *TeamsHandler) GetAll(offset int, limit int) (*[]model.Team, int64, err
 
 }
 
-func (th *TeamsHandler) GetByID(id string) (*model.Team, error) {
+func (th *TeamsHandler) GetByID(ctx context.Context, id string) (*model.Team, error) {
 
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
 		return nil, &e.Error{Code: e.ENOTFOUND, Op: "TeamsHandler.GetByID", Err: err}
 	}
 
-	data, err := th.TeamRepository.GetByID(idInt)
+	data, err := th.TeamRepository.GetByID(ctx, idInt)
 	if err != nil {
 		return nil, &e.Error{Op: "TeamsHandler.GetByID", Err: err}
 	}

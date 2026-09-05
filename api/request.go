@@ -3,26 +3,29 @@ package api
 import (
 	"context"
 	e "dota_league/error"
+	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
 )
 
-// valveLimiter is shared by all Valve API requests; it holds a *rate.Limiter and is
-// written once at startup (SetValveRateLimit) while workers read it concurrently.
-var valveLimiter atomic.Value
+// valveLimiter is shared by all Valve API requests.
+var valveLimiter atomic.Pointer[rate.Limiter]
 
 func init() {
-	SetValveRateLimit(defaultValveRPS)
+	valveLimiter.Store(rate.NewLimiter(defaultValveRPS, 1))
 }
 
 const defaultValveRPS = 1.5
+
+var httpClient = &http.Client{Timeout: 15 * time.Second}
 
 // SetValveRateLimit configures the shared rate limiter for all Valve API requests (requests per second).
 // Call it before starting workers.
@@ -32,84 +35,86 @@ func SetValveRateLimit(rps float64) {
 		burst = b
 	}
 	valveLimiter.Store(rate.NewLimiter(rate.Limit(rps), burst))
-	log.Printf("valve api rate limit set to %.2f rps (burst %d)", rps, burst)
+	slog.Info("Valve API rate limit configured", "rps", rps, "burst", burst)
 }
 
-func doRequest(url string) (io.ReadCloser, error) {
+func doRequest(ctx context.Context, url string) (io.ReadCloser, error) {
 	op := "api.doRequest"
 
-	limiter := valveLimiter.Load().(*rate.Limiter)
-	if err := limiter.Wait(context.Background()); err != nil {
+	limiter := valveLimiter.Load()
+	if err := limiter.Wait(ctx); err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	httpsClient := http.Client{
-		Timeout: time.Second * 15, // Timeout after 15 seconds
-	}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 	req.Header.Set("User-Agent", "Valve/Steam HTTP Client 1.0 (570)")
 
-	res, err := httpsClient.Do(req)
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		closeResponse(res.Body)
+		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Message: fmt.Sprintf("upstream HTTP status %d", res.StatusCode)}
+	}
 	return res.Body, nil
 }
 
-// DownloadImageIfNotExist Download image
-func DownloadImageIfNotExist(sourceURL string, relativeDestPath string, imageName string) error {
-	op := "api.DownloadImageIfNotExist"
-	basePath, err := os.Getwd()
+// DownloadImageIfNotExist publishes an image only after its download completes.
+func DownloadImageIfNotExist(ctx context.Context, sourceURL, relativeDestPath, imageName string) error {
+	const op = "api.DownloadImageIfNotExist"
+	dest := filepath.Join(relativeDestPath, imageName)
+	if _, err := os.Stat(dest); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return &e.Error{Op: op, Err: err}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+		return &e.Error{Op: op, Err: err}
 	}
-	path := fmt.Sprintf("%s/%s", basePath, relativeDestPath)
-
-	fullPathWithName := fmt.Sprintf("%s/%s", path, imageName)
-
-	_, err = os.Stat(fullPathWithName)
-	if os.IsNotExist(err) {
-		log.Printf("downloading image, %s", sourceURL)
-
-		resp, err := http.Get(sourceURL)
-		if err != nil {
-			return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
-		}
-
-		defer closeResponse(resp.Body)
-
-		if resp.StatusCode != 200 {
-			return &e.Error{Code: e.ENOTFOUND, Op: op}
-		}
-
-		if err := os.MkdirAll(path, os.ModePerm); err != nil {
-			return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
-		}
-		out, err := os.Create(fullPathWithName)
-		if err != nil {
-			return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
-		}
-
-		_, err = io.Copy(out, resp.Body)
-		closeErr := out.Close()
-		if err != nil {
-			return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
-		}
-		if closeErr != nil {
-			return &e.Error{Code: e.EINTERNAL, Op: op, Err: closeErr}
-		}
-
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return &e.Error{Op: op, Err: err}
 	}
-
+	defer closeResponse(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		code := e.EINTERNAL
+		if resp.StatusCode == http.StatusNotFound {
+			code = e.ENOTFOUND
+		}
+		return &e.Error{Code: code, Op: op, Message: fmt.Sprintf("upstream HTTP status %d", resp.StatusCode)}
+	}
+	if err := os.MkdirAll(relativeDestPath, 0755); err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	out, err := os.CreateTemp(relativeDestPath, ".image-*")
+	if err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	defer func() {
+		if err := os.Remove(out.Name()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			slog.WarnContext(ctx, "remove temporary image", "error", err)
+		}
+	}()
+	_, copyErr := io.Copy(out, resp.Body)
+	if err := errors.Join(copyErr, out.Close(), ctx.Err()); err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	if err := os.Chmod(out.Name(), 0644); err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	if err := os.Rename(out.Name(), dest); err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
 	return nil
 }
 
 func closeResponse(body io.Closer) {
 	if err := body.Close(); err != nil {
-		log.Printf("close API response: %v", err)
+		slog.Warn("close API response", "error", err)
 	}
 }

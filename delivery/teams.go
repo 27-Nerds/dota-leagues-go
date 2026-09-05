@@ -2,7 +2,7 @@ package delivery
 
 import (
 	e "dota_league/error"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -25,9 +25,9 @@ func NewTeamsDelivery(e *echo.Echo, th TeamsService) {
 
 func (td *TeamsDelivery) getAll(c echo.Context) error {
 	meta := newMeta(c)
-	teamsFromDB, totalCount, err := td.TeamsHandler.GetAll(meta.Offset, meta.Limit)
+	teamsFromDB, totalCount, err := td.TeamsHandler.GetAll(c.Request().Context(), meta.Offset, meta.Limit)
 	if err != nil {
-		log.Printf("getAll teams Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+		slog.ErrorContext(c.Request().Context(), "get teams", "error", err)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
 	meta.Total = totalCount
@@ -40,12 +40,12 @@ func (td *TeamsDelivery) getAll(c echo.Context) error {
 
 func (td *TeamsDelivery) getOne(c echo.Context) error {
 	id := c.Param("id")
-	team, err := td.TeamsHandler.GetByID(id)
+	team, err := td.TeamsHandler.GetByID(c.Request().Context(), id)
 	if e.IsNotFound(err) {
-		log.Printf("getOne team Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+		slog.DebugContext(c.Request().Context(), "team not found", "error", err)
 		return echo.NewHTTPError(http.StatusNotFound, "Team Not Found")
 	} else if err != nil {
-		log.Printf("getOne team Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+		slog.ErrorContext(c.Request().Context(), "get team", "error", err)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
 

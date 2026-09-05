@@ -3,44 +3,46 @@ package pusher
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
-	"log"
+	"log/slog"
 	"net/http"
+	"time"
 )
 
 type Pusher struct {
 }
 
 // SendTo - send given data to the given url
-func (p *Pusher) SendTo(url string, data *interface{}) error {
+func (p *Pusher) SendTo(ctx context.Context, url string, data any) error {
 
 	byteData, err := p.getBytes(data)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(byteData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(byteData))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("close push response: %v", err)
+			slog.WarnContext(ctx, "close push response", "error", err)
 		}
 	}()
 
-	log.Println("response Status:", resp.Status)
+	slog.DebugContext(ctx, "push response", "status", resp.StatusCode)
 	return nil
 }
 
-func (p *Pusher) getBytes(key interface{}) ([]byte, error) {
+func (p *Pusher) getBytes(key any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(key)

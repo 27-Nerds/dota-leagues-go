@@ -6,16 +6,16 @@ import (
 	e "dota_league/error"
 )
 
-func existsInColByID(conn Database, colName string, id string) (bool, error) {
+func existsInColByID(ctx context.Context, conn Database, colName string, id string) (bool, error) {
 	query := "RETURN LENGTH(FOR d IN @@collection FILTER d._key == @id LIMIT 1 RETURN true) > 0"
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"@collection": colName,
 		"id":          id,
 	}
 
 	var exists bool
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	_, err := conn.Query(ctx, query, bindVars, &exists)
 	if e.IsNotFound(err) {

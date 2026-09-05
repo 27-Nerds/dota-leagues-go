@@ -6,11 +6,10 @@ import (
 	e "dota_league/error"
 	"dota_league/model"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
 
-	"github.com/arangodb/go-driver"
+	driver "github.com/arangodb/go-driver/v2/arangodb/shared"
 )
 
 // LeagueDetailsRepository repository struct
@@ -28,9 +27,9 @@ func NewLeagueDetailsRepository(conn Database) *LeagueDetailsRepository {
 }
 
 // Store store leagueDetails model in db
-func (ldr *LeagueDetailsRepository) Store(ld *model.LeagueDetails) error {
+func (ldr *LeagueDetailsRepository) Store(ctx context.Context, ld *model.LeagueDetails) error {
 	ld.DBKey = strconv.Itoa(ld.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := ldr.Conn.Insert(ctx, "league_details", ld)
@@ -44,9 +43,9 @@ func (ldr *LeagueDetailsRepository) Store(ld *model.LeagueDetails) error {
 }
 
 // Update updates an existing league details record (partial merge)
-func (ldr *LeagueDetailsRepository) Update(ld *model.LeagueDetails) error {
+func (ldr *LeagueDetailsRepository) Update(ctx context.Context, ld *model.LeagueDetails) error {
 	ld.DBKey = strconv.Itoa(ld.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := ldr.Conn.Update(ctx, "league_details", ld.DBKey, ld)
@@ -58,9 +57,9 @@ func (ldr *LeagueDetailsRepository) Update(ld *model.LeagueDetails) error {
 }
 
 // ExistsByID - check wether record exists in the DB
-func (ldr *LeagueDetailsRepository) ExistsByID(id int) (bool, error) {
+func (ldr *LeagueDetailsRepository) ExistsByID(ctx context.Context, id int) (bool, error) {
 
-	exists, err := existsInColByID(ldr.Conn, "league_details", strconv.Itoa(id))
+	exists, err := existsInColByID(ctx, ldr.Conn, "league_details", strconv.Itoa(id))
 	if err != nil {
 		return false, &e.Error{Op: "LeagueDetailsRepository.ExistsByID", Err: err}
 	}
@@ -69,14 +68,14 @@ func (ldr *LeagueDetailsRepository) ExistsByID(id int) (bool, error) {
 }
 
 // GetAllActive returns all leagues wgere end_timestamp is greater than current date
-func (ldr *LeagueDetailsRepository) GetAllActive(offset int, limit int) (*[]model.LeagueDetails, int64, error) {
+func (ldr *LeagueDetailsRepository) GetAllActive(ctx context.Context, offset int, limit int) ([]model.LeagueDetails, int64, error) {
 
 	query := fmt.Sprintf("FOR d IN league_details %s LIMIT %d, %d RETURN d", ldr.activityFilter, offset, limit)
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"today": time.Now().Unix(),
 	}
 
-	leagues, totalCount, err := ldr.queryAll(query, bindVars, true)
+	leagues, totalCount, err := ldr.queryAll(ctx, query, bindVars, true)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
 	}
@@ -85,15 +84,15 @@ func (ldr *LeagueDetailsRepository) GetAllActive(offset int, limit int) (*[]mode
 }
 
 // GetAllActiveForTiers returns all leagues wgere end_timestamp is greater than current date
-func (ldr *LeagueDetailsRepository) GetAllActiveForTiers(tiers []int) (*[]model.LeagueDetails, error) {
+func (ldr *LeagueDetailsRepository) GetAllActiveForTiers(ctx context.Context, tiers []int) ([]model.LeagueDetails, error) {
 
 	query := fmt.Sprintf("FOR d IN league_details FILTER d.tier in @tier %s RETURN d", ldr.activityFilter)
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"today": time.Now().Unix(),
 		"tier":  tiers,
 	}
 
-	leagues, _, err := ldr.queryAll(query, bindVars, false)
+	leagues, _, err := ldr.queryAll(ctx, query, bindVars, false)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueDetailsRepository.GetAllActiveForTiers", Err: err}
 	}
@@ -102,12 +101,12 @@ func (ldr *LeagueDetailsRepository) GetAllActiveForTiers(tiers []int) (*[]model.
 }
 
 // UpdateLiveStatus you can set league as active or not
-func (ldr *LeagueDetailsRepository) UpdateLiveStatus(key int, newStatus bool) error {
-	patch := map[string]interface{}{
+func (ldr *LeagueDetailsRepository) UpdateLiveStatus(ctx context.Context, key int, newStatus bool) error {
+	patch := map[string]any{
 		"is_live": newStatus,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := ldr.Conn.Update(ctx, "league_details", strconv.Itoa(key), patch)
@@ -119,11 +118,11 @@ func (ldr *LeagueDetailsRepository) UpdateLiveStatus(key int, newStatus bool) er
 }
 
 // UpdateTotalPrizePool set new prize pool for given league
-func (ldr *LeagueDetailsRepository) UpdateTotalPrizePool(key int, prizePool int) error {
-	patch := map[string]interface{}{
+func (ldr *LeagueDetailsRepository) UpdateTotalPrizePool(ctx context.Context, key int, prizePool int) error {
+	patch := map[string]any{
 		"total_prize_pool": prizePool,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := ldr.Conn.Update(ctx, "league_details", strconv.Itoa(key), patch)
@@ -135,10 +134,10 @@ func (ldr *LeagueDetailsRepository) UpdateTotalPrizePool(key int, prizePool int)
 }
 
 // SetAllAsNotLive set all leagues as inactive
-func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+func (ldr *LeagueDetailsRepository) SetAllAsNotLive(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	query := "FOR u IN league_details UPDATE u WITH { u.is_live: false } IN league_details"
+	query := "FOR u IN league_details UPDATE u WITH { is_live: false } IN league_details"
 	err := ldr.Conn.DoQuery(ctx, query)
 	if err != nil {
 		return &e.Error{Op: "LeagueDetailsRepository.SetAllAsNotLive", Err: err}
@@ -148,19 +147,18 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 }
 
 // GetByID get league
-func (ldr *LeagueDetailsRepository) GetByID(id int) (*model.LeagueDetails, error) {
+func (ldr *LeagueDetailsRepository) GetByID(ctx context.Context, id int) (*model.LeagueDetails, error) {
 	query := "FOR d IN league_details FILTER d._key == @id RETURN d"
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"id": strconv.Itoa(id),
 	}
 
 	var league model.LeagueDetails
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	_, err := ldr.Conn.Query(ctx, query, bindVars, &league)
 
-	log.Printf("%+v", league)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueDetailsRepository.Get", Err: err}
 	}
@@ -170,16 +168,12 @@ func (ldr *LeagueDetailsRepository) GetByID(id int) (*model.LeagueDetails, error
 
 // queryAll performs given query and returs array of serialized objects
 // second return parameter is total count of results, if withTotalCount is set to false, it will be 0
-func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]interface{}, withTotalCount bool) (*[]model.LeagueDetails, int64, error) {
+func (ldr *LeagueDetailsRepository) queryAll(ctx context.Context, query string, bindVars map[string]any, withTotalCount bool) ([]model.LeagueDetails, int64, error) {
 	var totalCount int64
 
-	ct := context.Background()
-	if withTotalCount {
-		ct = driver.WithQueryFullCount(context.Background(), true)
-	}
-	ctx, cancel := context.WithTimeout(ct, dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	cursor, err := ldr.Conn.QueryAll(ctx, query, bindVars)
+	cursor, err := ldr.Conn.QueryAll(ctx, query, bindVars, withTotalCount)
 	if err != nil {
 		return nil, totalCount, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
 	}
@@ -198,8 +192,8 @@ func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]i
 		leagues = append(leagues, doc)
 	}
 	if withTotalCount {
-		totalCount = cursor.Statistics().FullCount()
+		totalCount = int64(cursor.Statistics().FullCountInt)
 	}
 
-	return &leagues, totalCount, nil
+	return leagues, totalCount, nil
 }

@@ -1,27 +1,28 @@
 package handler
 
 import (
+	"context"
 	e "dota_league/error"
 	"dota_league/model"
-	"log"
+	"log/slog"
 )
 
 // MatchMinimalHandler struct
 type MatchMinimalHandler struct {
 	MatchMinimalRepository MatchStore
-	load                   func(leagueID int, matchID string) (*model.MatchMinimal, error)
+	load                   func(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error)
 }
 
 // NewMatchMinimalHandler return handler struct
-func NewMatchMinimalHandler(mm MatchStore, load func(leagueID int, matchID string) (*model.MatchMinimal, error)) *MatchMinimalHandler {
+func NewMatchMinimalHandler(mm MatchStore, load func(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error)) *MatchMinimalHandler {
 	return &MatchMinimalHandler{MatchMinimalRepository: mm, load: load}
 }
 
 // Get returns the stored minimal match data, fetching from Valve when not cached yet
-func (h *MatchMinimalHandler) Get(leagueID int, matchID string) (*model.MatchMinimal, error) {
+func (h *MatchMinimalHandler) Get(ctx context.Context, leagueID int, matchID string) (*model.MatchMinimal, error) {
 	const op = "MatchMinimalHandler.Get"
 
-	matchFromDB, err := h.MatchMinimalRepository.Get(matchID)
+	matchFromDB, err := h.MatchMinimalRepository.Get(ctx, matchID)
 	if !e.IsNotFound(err) && err != nil {
 		return nil, &e.Error{Op: op, Err: err}
 	}
@@ -30,13 +31,13 @@ func (h *MatchMinimalHandler) Get(leagueID int, matchID string) (*model.MatchMin
 		return matchFromDB, nil
 	}
 
-	matchFromAPI, apiErr := h.load(leagueID, matchID)
+	matchFromAPI, apiErr := h.load(ctx, leagueID, matchID)
 	if apiErr != nil {
 		return nil, &e.Error{Op: op, Err: apiErr}
 	}
 
-	if storeErr := h.MatchMinimalRepository.Store(matchFromAPI); storeErr != nil {
-		log.Printf("MatchMinimalHandler.Get: store %d/%s error: %s", leagueID, matchID, storeErr)
+	if storeErr := h.MatchMinimalRepository.Store(ctx, matchFromAPI); storeErr != nil {
+		slog.WarnContext(ctx, "cache match", "league_id", leagueID, "match_id", matchID, "error", storeErr)
 	}
 
 	return matchFromAPI, nil

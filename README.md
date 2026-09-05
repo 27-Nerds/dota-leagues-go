@@ -1,5 +1,13 @@
 ## Development
 
+Use Go 1.27.1. With Go 1.21 or newer and `GOTOOLCHAIN=auto`, the Go command downloads the version required by `go.mod`.
+
+Run code quality checks with `make quality`. To include the disposable ArangoDB integration test:
+
+```bash
+ARANGO_TEST_URL=http://127.0.0.1:8529 make quality
+```
+
 start ArangoDB with docker (no manual install needed):
 
 ```bash

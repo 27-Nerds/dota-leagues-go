@@ -15,9 +15,9 @@ func NewLiveGameDetailsRepository(Conn Database) *LiveGameDetails {
 	return &LiveGameDetails{Conn}
 }
 
-func (lgd *LiveGameDetails) Store(l *model.LiveGameDetails) error {
+func (lgd *LiveGameDetails) Store(ctx context.Context, l *model.LiveGameDetails) error {
 	l.DBKey = l.Match.Matchid
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := lgd.Conn.Insert(ctx, "live_game_details", l)
@@ -30,9 +30,9 @@ func (lgd *LiveGameDetails) Store(l *model.LiveGameDetails) error {
 	return nil
 }
 
-func (lgd *LiveGameDetails) ExistsByID(id string) (bool, error) {
+func (lgd *LiveGameDetails) ExistsByID(ctx context.Context, id string) (bool, error) {
 
-	exists, err := existsInColByID(lgd.Conn, "live_game_details", id)
+	exists, err := existsInColByID(ctx, lgd.Conn, "live_game_details", id)
 	if err != nil {
 		return false, &e.Error{Op: "LiveGameDetailsRepository.ExistsByID", Err: err}
 	}
@@ -41,8 +41,8 @@ func (lgd *LiveGameDetails) ExistsByID(id string) (bool, error) {
 }
 
 // Update saves changes to stored live game details.
-func (lgd *LiveGameDetails) Update(lgm *model.LiveGameDetails) error {
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+func (lgd *LiveGameDetails) Update(ctx context.Context, lgm *model.LiveGameDetails) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := lgd.Conn.Update(ctx, "live_game_details", lgm.DBKey, lgm)

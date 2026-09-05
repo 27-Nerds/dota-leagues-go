@@ -6,41 +6,41 @@ import (
 	"dota_league/model"
 	"testing"
 
-	arango "github.com/arangodb/go-driver"
+	arango "github.com/arangodb/go-driver/v2/arangodb"
 )
 
 // fakeDB records calls and lets tests script Insert/Update outcomes
 type fakeDB struct {
 	insertCalls int
 	updateCalls int
-	lastInsert  interface{}
-	lastUpdate  interface{}
+	lastInsert  any
+	lastUpdate  any
 	lastKey     string
 	insertErr   error
 	updateErr   error
 }
 
-func (f *fakeDB) Insert(ctx context.Context, colName string, obj interface{}) error {
+func (f *fakeDB) Insert(ctx context.Context, colName string, obj any) error {
 	f.insertCalls++
 	f.lastInsert = obj
 	return f.insertErr
 }
 
-func (f *fakeDB) InsertMany(ctx context.Context, colName string, obj interface{}) error {
+func (f *fakeDB) InsertMany(ctx context.Context, colName string, obj any) error {
 	f.insertCalls += 1
 	f.lastInsert = obj
 	return nil
 }
 
-func (f *fakeDB) Query(ctx context.Context, query string, bindVars map[string]interface{}, resObj interface{}) (string, error) {
+func (f *fakeDB) Query(ctx context.Context, query string, bindVars map[string]any, resObj any) (string, error) {
 	return "", &e.Error{Code: e.ENOTFOUND, Message: "no document found"}
 }
 
-func (f *fakeDB) QueryAll(ctx context.Context, query string, bindVars map[string]interface{}) (arango.Cursor, error) {
+func (f *fakeDB) QueryAll(ctx context.Context, query string, bindVars map[string]any, fullCount bool) (arango.Cursor, error) {
 	return nil, &e.Error{Code: e.ENOTFOUND, Message: "no documents found"}
 }
 
-func (f *fakeDB) Update(ctx context.Context, colName string, key string, obj interface{}) error {
+func (f *fakeDB) Update(ctx context.Context, colName string, key string, obj any) error {
 	f.updateCalls++
 	f.lastKey = key
 	f.lastUpdate = obj
@@ -48,7 +48,7 @@ func (f *fakeDB) Update(ctx context.Context, colName string, key string, obj int
 }
 
 func (f *fakeDB) DoQuery(ctx context.Context, query string) error { return nil }
-func (f *fakeDB) DoQueryBuilder(ctx context.Context, query string, bindVars map[string]interface{}) error {
+func (f *fakeDB) DoQueryBuilder(ctx context.Context, query string, bindVars map[string]any) error {
 	return nil
 }
 func (f *fakeDB) ClearCollection(ctx context.Context, colName string) error { return nil }
@@ -60,7 +60,7 @@ func TestDPCStandingsStoreInsertHappyPath(t *testing.T) {
 	fake := &fakeDB{}
 	repo := NewDPCStandingsRepository(fake)
 
-	err := repo.Store(&model.DPCStandings{})
+	err := repo.Store(t.Context(), &model.DPCStandings{})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -78,7 +78,7 @@ func TestDPCStandingsStoreConflictUpdates(t *testing.T) {
 	fake := &fakeDB{insertErr: econflictErr}
 	repo := NewDPCStandingsRepository(fake)
 
-	err := repo.Store(&model.DPCStandings{})
+	err := repo.Store(t.Context(), &model.DPCStandings{})
 	if err != nil {
 		t.Fatalf("expected conflict to resolve via update, got %v", err)
 	}
@@ -92,7 +92,7 @@ func TestDPCStandingsStoreOtherErrorPropagates(t *testing.T) {
 	fake := &fakeDB{insertErr: &e.Error{Code: e.EINTERNAL, Message: "boom"}}
 	repo := NewDPCStandingsRepository(fake)
 
-	if err := repo.Store(&model.DPCStandings{}); err == nil {
+	if err := repo.Store(t.Context(), &model.DPCStandings{}); err == nil {
 		t.Fatal("expected error to propagate")
 	}
 	if fake.updateCalls != 0 {
@@ -105,7 +105,7 @@ func TestDPCResultsStoreConflictUpdates(t *testing.T) {
 	fake := &fakeDB{insertErr: econflictErr}
 	repo := NewDPCResultsRepository(fake)
 
-	err := repo.Store(4075214, &model.DPCLeagueResults{})
+	err := repo.Store(t.Context(), 4075214, &model.DPCLeagueResults{})
 	if err != nil {
 		t.Fatalf("expected conflict to resolve via update, got %v", err)
 	}
@@ -123,7 +123,7 @@ func TestMatchMinimalStoreConflictUpdates(t *testing.T) {
 	fake := &fakeDB{insertErr: econflictErr}
 	repo := NewMatchMinimalRepository(fake)
 
-	err := repo.Store(&model.MatchMinimal{MatchID: "7105932934"})
+	err := repo.Store(t.Context(), &model.MatchMinimal{MatchID: "7105932934"})
 	if err != nil {
 		t.Fatalf("expected conflict to resolve via update, got %v", err)
 	}

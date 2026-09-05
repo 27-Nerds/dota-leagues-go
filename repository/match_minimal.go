@@ -19,11 +19,11 @@ func NewMatchMinimalRepository(Conn Database) *MatchMinimalRepository {
 }
 
 // Store upserts the stored minimal match document
-func (r *MatchMinimalRepository) Store(mm *model.MatchMinimal) error {
+func (r *MatchMinimalRepository) Store(ctx context.Context, mm *model.MatchMinimal) error {
 	const op = "MatchMinimalRepository.Store"
 
 	mm.DBKey = mm.MatchID
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := r.Conn.Insert(ctx, matchMinimalCollection, mm)
@@ -37,14 +37,14 @@ func (r *MatchMinimalRepository) Store(mm *model.MatchMinimal) error {
 }
 
 // Get returns the stored minimal match document by match id
-func (r *MatchMinimalRepository) Get(matchID string) (*model.MatchMinimal, error) {
+func (r *MatchMinimalRepository) Get(ctx context.Context, matchID string) (*model.MatchMinimal, error) {
 	const op = "MatchMinimalRepository.Get"
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	var mm model.MatchMinimal
-	_, err := r.Conn.Query(ctx, "FOR d IN "+matchMinimalCollection+" FILTER d._key == @id RETURN d", map[string]interface{}{
+	_, err := r.Conn.Query(ctx, "FOR d IN "+matchMinimalCollection+" FILTER d._key == @id RETURN d", map[string]any{
 		"id": matchID,
 	}, &mm)
 	if err != nil {

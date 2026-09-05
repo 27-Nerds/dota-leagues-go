@@ -25,14 +25,14 @@ func newGameResponse(gameFromDB *model.Game) *GameResponse {
 	}
 }
 
-func generateGameResponse(gamesFromDB *[]model.Game) *[]*GameResponse {
+func generateGameResponse(gamesFromDB []model.Game) []*GameResponse {
 
 	gameResponse := []*GameResponse{}
 
 	//convert model.Game to model.GameResponse
-	for _, gameFromDB := range *gamesFromDB {
+	for _, gameFromDB := range gamesFromDB {
 		gameResponse = append(gameResponse, newGameResponse(&gameFromDB))
 	}
 
-	return &gameResponse
+	return gameResponse
 }

@@ -1,18 +1,18 @@
 package api
 
 import (
+	"context"
 	e "dota_league/error"
 	"dota_league/model"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
 )
 
 // LoadLeagues loads json from the Dota API
-func LoadLeagues() (*model.LeagueData, error) {
+func LoadLeagues(ctx context.Context) (*model.LeagueData, error) {
 	op := "api.LoadLeagues"
-	body, err := doRequest("https://www.dota2.com/webapi/IDOTA2League/GetLeagueInfoList/v001?")
+	body, err := doRequest(ctx, "https://www.dota2.com/webapi/IDOTA2League/GetLeagueInfoList/v001?")
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
@@ -28,10 +28,10 @@ func LoadLeagues() (*model.LeagueData, error) {
 }
 
 // LoadLeagueDetails loads json from the Dota API for the given leagueID
-func LoadLeagueDetails(leagueID int) (*model.LeagueDetailsData, error) {
+func LoadLeagueDetails(ctx context.Context, leagueID int) (*model.LeagueDetailsData, error) {
 	op := "api.LoadLeagueDetails"
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2League/GetLeagueData/v001?league_id=%d", leagueID)
-	body, err := doRequest(url)
+	body, err := doRequest(ctx, url)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
@@ -55,19 +55,18 @@ type PrizePoolResponse struct {
 }
 
 // LoadPrizePool loads prize_pool Dota API for the given leagueID
-func LoadPrizePool(leagueID int) (*PrizePoolResponse, error) {
+func LoadPrizePool(ctx context.Context, leagueID int) (*PrizePoolResponse, error) {
 	op := "api.LoadPrizePool"
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2League/GetPrizePool/v001?league_id=%d", leagueID)
-	body, err := doRequest(url)
+	body, err := doRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 	defer closeResponse(body)
 
-	responseData, err := ioutil.ReadAll(body)
+	responseData, err := io.ReadAll(body)
 
 	if err != nil {
-		log.Print("here")
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 

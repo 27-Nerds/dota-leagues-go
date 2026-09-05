@@ -7,7 +7,7 @@ import (
 	"dota_league/model"
 	"fmt"
 
-	"github.com/arangodb/go-driver"
+	driver "github.com/arangodb/go-driver/v2/arangodb/shared"
 )
 
 // LeagueSeriesRepository struct
@@ -23,8 +23,8 @@ func NewLeagueSeriesRepository(Conn Database) *LeagueSeriesRepository {
 }
 
 // ReplaceAllForLeague replaces all series rows of the given league with the given slice
-func (rs *LeagueSeriesRepository) ReplaceAllForLeague(leagueID int, series []model.SeriesInfo) error {
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+func (rs *LeagueSeriesRepository) ReplaceAllForLeague(ctx context.Context, leagueID int, series []model.SeriesInfo) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	rows := make([]model.LeagueSeries, 0, len(series))
@@ -44,7 +44,7 @@ func (rs *LeagueSeriesRepository) ReplaceAllForLeague(leagueID int, series []mod
 	err := rs.Conn.WithTransaction(ctx, "league_series", func(txCtx context.Context) error {
 		if err := rs.Conn.DoQueryBuilder(txCtx,
 			"FOR s IN league_series FILTER s.league_id == @id REMOVE s IN league_series",
-			map[string]interface{}{"id": leagueID}); err != nil {
+			map[string]any{"id": leagueID}); err != nil {
 			return err
 		}
 		if len(rows) == 0 {
@@ -59,7 +59,7 @@ func (rs *LeagueSeriesRepository) ReplaceAllForLeague(leagueID int, series []mod
 }
 
 // GetAllByLeague returns series of the league with team names joined from teams collection
-func (rs *LeagueSeriesRepository) GetAllByLeague(leagueID int, offset int, limit int) (*[]model.LeagueSeries, int64, error) {
+func (rs *LeagueSeriesRepository) GetAllByLeague(ctx context.Context, leagueID int, offset int, limit int) ([]model.LeagueSeries, int64, error) {
 	// LIMIT runs before the joins so DOCUMENT() lookups happen for the page only (primary key hits)
 	query := `FOR s IN league_series FILTER s.league_id == @id
 SORT s.start_time DESC
@@ -68,7 +68,7 @@ LET t1 = DOCUMENT("teams", TO_STRING(s.team_id_1))
 LET t2 = DOCUMENT("teams", TO_STRING(s.team_id_2))
 RETURN {league_id: s.league_id, series_id: s.series_id, series_type: s.series_type, start_time: s.start_time, match_ids: s.match_ids, team_id_1: s.team_id_1, team_id_2: s.team_id_2, team_name_1: t1.name, team_tag_1: t1.tag, team_name_2: t2.name, team_tag_2: t2.tag}`
 
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"id":     leagueID,
 		"offset": offset,
 		"limit":  limit,
@@ -77,13 +77,12 @@ RETURN {league_id: s.league_id, series_id: s.series_id, series_type: s.series_ty
 	var series []model.LeagueSeries
 	var totalCount int64
 
-	ct := driver.WithQueryFullCount(context.Background(), true)
-	ctx, cancel := context.WithTimeout(ct, dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	cursor, err := rs.Conn.QueryAll(ctx, query, bindVars)
+	cursor, err := rs.Conn.QueryAll(ctx, query, bindVars, true)
 	if e.IsNotFound(err) {
-		return &series, 0, nil
+		return series, 0, nil
 	} else if err != nil {
 		return nil, 0, &e.Error{Op: "LeagueSeriesRepository.GetAllByLeague", Err: err}
 	}
@@ -100,7 +99,7 @@ RETURN {league_id: s.league_id, series_id: s.series_id, series_type: s.series_ty
 		series = append(series, doc)
 	}
 
-	totalCount = cursor.Statistics().FullCount()
+	totalCount = int64(cursor.Statistics().FullCountInt)
 
-	return &series, totalCount, nil
+	return series, totalCount, nil
 }

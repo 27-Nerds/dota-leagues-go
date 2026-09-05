@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/arangodb/go-driver"
+	driver "github.com/arangodb/go-driver/v2/arangodb/shared"
 )
 
 // TeamRosterRepository repository object
@@ -23,9 +23,9 @@ func NewTeamRosterRepository(Conn Database) *TeamRosterRepository {
 }
 
 // Store store team roster model in db
-func (trr *TeamRosterRepository) Store(teamRoster *model.TeamRoster) error {
+func (trr *TeamRosterRepository) Store(ctx context.Context, teamRoster *model.TeamRoster) error {
 	teamRoster.DBKey = strconv.Itoa(teamRoster.TeamID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := trr.Conn.Insert(ctx, "team_rosters", teamRoster)
@@ -39,8 +39,8 @@ func (trr *TeamRosterRepository) Store(teamRoster *model.TeamRoster) error {
 }
 
 // ExistsByTeamID check wether record exists in the DB for the given team
-func (trr *TeamRosterRepository) ExistsByTeamID(TeamID int) (bool, error) {
-	exists, err := existsInColByID(trr.Conn, "team_rosters", strconv.Itoa(TeamID))
+func (trr *TeamRosterRepository) ExistsByTeamID(ctx context.Context, TeamID int) (bool, error) {
+	exists, err := existsInColByID(ctx, trr.Conn, "team_rosters", strconv.Itoa(TeamID))
 	if err != nil {
 		return false, &e.Error{Op: "TeamRosterRepository.ExistsByTeamID", Err: err}
 	}
@@ -49,9 +49,9 @@ func (trr *TeamRosterRepository) ExistsByTeamID(TeamID int) (bool, error) {
 }
 
 // Update updates an existing team roster record (partial merge)
-func (trr *TeamRosterRepository) Update(teamRoster *model.TeamRoster) error {
+func (trr *TeamRosterRepository) Update(ctx context.Context, teamRoster *model.TeamRoster) error {
 	key := strconv.Itoa(teamRoster.TeamID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := trr.Conn.Update(ctx, "team_rosters", key, teamRoster)
@@ -63,14 +63,14 @@ func (trr *TeamRosterRepository) Update(teamRoster *model.TeamRoster) error {
 }
 
 // GetAll returns all teams
-func (trr *TeamRosterRepository) GetAll(offset int, limit int) (*[]model.TeamRoster, int64, error) {
+func (trr *TeamRosterRepository) GetAll(ctx context.Context, offset int, limit int) ([]model.TeamRoster, int64, error) {
 
 	query := fmt.Sprintf("FOR d IN team_rosters LIMIT %d, %d RETURN d", offset, limit)
-	bindVars := map[string]interface{}{
+	bindVars := map[string]any{
 		"today": time.Now().Unix(),
 	}
 
-	teams, totalCount, err := trr.queryAll(query, bindVars, true)
+	teams, totalCount, err := trr.queryAll(ctx, query, bindVars, true)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "TeamRosterRepository.GetAllActive", Err: err}
 	}
@@ -79,8 +79,8 @@ func (trr *TeamRosterRepository) GetAll(offset int, limit int) (*[]model.TeamRos
 }
 
 // GetByID get league
-func (trr *TeamRosterRepository) GetByID(id int) (*model.TeamRoster, error) {
-	bindVars := map[string]interface{}{
+func (trr *TeamRosterRepository) GetByID(ctx context.Context, id int) (*model.TeamRoster, error) {
+	bindVars := map[string]any{
 		"id": strconv.Itoa(id),
 	}
 
@@ -88,7 +88,7 @@ func (trr *TeamRosterRepository) GetByID(id int) (*model.TeamRoster, error) {
 
 	var teamRoster model.TeamRoster
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	_, err := trr.Conn.Query(ctx, query, bindVars, &teamRoster)
 
@@ -101,16 +101,12 @@ func (trr *TeamRosterRepository) GetByID(id int) (*model.TeamRoster, error) {
 
 // queryAll performs given query and returs array of serialized objects
 // second return parameter is total count of results, if withTotalCount is set to false, it will be 0
-func (trr *TeamRosterRepository) queryAll(query string, bindVars map[string]interface{}, withTotalCount bool) (*[]model.TeamRoster, int64, error) {
+func (trr *TeamRosterRepository) queryAll(ctx context.Context, query string, bindVars map[string]any, withTotalCount bool) ([]model.TeamRoster, int64, error) {
 	var totalCount int64
 
-	ct := context.Background()
-	if withTotalCount {
-		ct = driver.WithQueryFullCount(context.Background(), true)
-	}
-	ctx, cancel := context.WithTimeout(ct, dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	cursor, err := trr.Conn.QueryAll(ctx, query, bindVars)
+	cursor, err := trr.Conn.QueryAll(ctx, query, bindVars, withTotalCount)
 	if err != nil {
 		return nil, totalCount, &e.Error{Op: "TeamRosterRepository.GetAllActive", Err: err}
 	}
@@ -129,8 +125,8 @@ func (trr *TeamRosterRepository) queryAll(query string, bindVars map[string]inte
 		leagues = append(leagues, doc)
 	}
 	if withTotalCount {
-		totalCount = cursor.Statistics().FullCount()
+		totalCount = int64(cursor.Statistics().FullCountInt)
 	}
 
-	return &leagues, totalCount, nil
+	return leagues, totalCount, nil
 }

@@ -37,7 +37,7 @@ func TestDPCStandingsDecodesPopulatedSample(t *testing.T) {
 	if err := json.Unmarshal(data, &dpc); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(dpc.Standings) != 1 || dpc.Standings[0].(map[string]interface{})["team_id"] != float64(1234) {
+	if len(dpc.Standings) != 1 || dpc.Standings[0].(map[string]any)["team_id"] != float64(1234) {
 		t.Errorf("standings item should pass through as raw map, got %+v", dpc.Standings)
 	}
 }

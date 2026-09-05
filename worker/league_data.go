@@ -1,24 +1,27 @@
 package worker
 
 import (
+	"context"
 	"dota_league/api"
 	e "dota_league/error"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 )
 
-func (dl *DataLoader) downloadLeagueImage(leagueID int) error {
-	url := fmt.Sprintf("http://cdn.dota2.com/apps/dota2/images/leagues/%d/images/image_8.png", leagueID)
+func (dl *DataLoader) downloadLeagueImage(ctx context.Context, leagueID int) error {
+	// Use the shared CDN path used by the Dota client. The older website
+	// path under apps/dota2/images/leagues does not contain newer leagues.
+	url := fmt.Sprintf("https://shared.steamstatic.com/dota_leagues/images/%d/image_8.png", leagueID)
 
 	path := fmt.Sprintf("public/%d", leagueID)
 
-	err := api.DownloadImageIfNotExist(url, path, "logo.png")
+	err := api.DownloadImageIfNotExist(ctx, url, path, "logo.png")
 	if e.IsNotFound(err) {
 		// if file image_8 not found on the dota 2 server, try to redownload image_1
-		url = fmt.Sprintf("http://cdn.dota2.com/apps/dota2/images/leagues/%d/images/image_1.png", leagueID)
+		url = fmt.Sprintf("https://shared.steamstatic.com/dota_leagues/images/%d/image_1.png", leagueID)
 
-		err := api.DownloadImageIfNotExist(url, path, "logo.png")
+		err := api.DownloadImageIfNotExist(ctx, url, path, "logo.png")
 		if err != nil {
 			return err
 		}
@@ -30,30 +33,27 @@ func (dl *DataLoader) downloadLeagueImage(leagueID int) error {
 	return nil
 }
 
-func (dl *DataLoader) performPrizePoolUpdate() error {
-	log.Println("refreshing prizepools...")
+func (dl *DataLoader) performPrizePoolUpdate(ctx context.Context) error {
+	slog.DebugContext(ctx, "refreshing prize pools")
 
 	// update prizepool only for active tier 4 and 5 leagues
-	leagues, err := dl.LeagueDetailsRepository.GetAllActiveForTiers([]int{4, 5})
+	leagues, err := dl.LeagueDetailsRepository.GetAllActiveForTiers(ctx, []int{4, 5})
 	if err != nil {
 		return err
 	}
 
-	for _, league := range *leagues {
-		prizePool, err := api.LoadPrizePool(league.ID)
+	for _, league := range leagues {
+		prizePool, err := api.LoadPrizePool(ctx, league.ID)
 		if err != nil {
-			log.Printf("error while performPrizePoolUpdate - LoadPrizePool: %v", err)
 			return err
 		}
 		// do not store 0 prizepool
 		if prizePool.PrizePool == 0 {
-			log.Printf("0 prizepool recieved for league %d", league.ID)
-			return nil
+			continue
 		}
 
-		err = dl.LeagueDetailsRepository.UpdateTotalPrizePool(league.ID, prizePool.PrizePool)
+		err = dl.LeagueDetailsRepository.UpdateTotalPrizePool(ctx, league.ID, prizePool.PrizePool)
 		if err != nil {
-			log.Printf("error while performPrizePoolUpdate - UpdateTotalPrizePool: %v", err)
 			return err
 		}
 	}
@@ -61,25 +61,26 @@ func (dl *DataLoader) performPrizePoolUpdate() error {
 	return err
 }
 
-func (dl *DataLoader) performLeaguesUpdate() error {
+func (dl *DataLoader) performLeaguesUpdate(ctx context.Context) error {
 
 	// Update leagues in the DB
-	err := dl.storeLeagues()
+	err := dl.storeLeagues(ctx)
 	if err != nil {
-		log.Printf("error while storeLeagues: %v", err)
 		return err
 	}
-	log.Println("base info for leagues updated.")
+	slog.DebugContext(ctx, "base league information updated")
 
 	//TODO: store last processed league id to not
 	//      Get all fresh leagues
-	leagues, err := dl.LeagueRepository.GetAllActive()
+	leagues, err := dl.LeagueRepository.GetAllActive(ctx)
 	if err != nil {
-		log.Printf("error while storeLeagues: %v", err)
+		return err
 	} else {
-		log.Println("performing league details parsing")
-		for _, league := range *leagues {
-			dl.LoadLeagueDetails <- league.ID
+		slog.DebugContext(ctx, "refreshing league details")
+		for _, league := range leagues {
+			if err := enqueue(ctx, dl.LoadLeagueDetails, league.ID); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -87,13 +88,13 @@ func (dl *DataLoader) performLeaguesUpdate() error {
 }
 
 // storeLeagues gets data from api and stores it into DB
-func (dl *DataLoader) storeLeagues() error {
-	leagueData, err := api.LoadLeagues()
+func (dl *DataLoader) storeLeagues(ctx context.Context) error {
+	leagueData, err := api.LoadLeagues(ctx)
 	if err != nil {
 		return err
 	}
 
-	hasRecord, err := dl.LeagueRepository.HasAnyRecord()
+	hasRecord, err := dl.LeagueRepository.HasAnyRecord(ctx)
 	if err != nil {
 		return err
 	}
@@ -101,17 +102,20 @@ func (dl *DataLoader) storeLeagues() error {
 	if hasRecord {
 		for _, league := range leagueData.Leagues {
 			//Store league only if it not exists in the DB
-			b, _ := dl.LeagueRepository.ExistsByID(league.ID)
+			b, err := dl.LeagueRepository.ExistsByID(ctx, league.ID)
+			if err != nil {
+				return err
+			}
 
 			if !b {
-				if err = dl.LeagueRepository.Store(&league); err != nil {
+				if err = dl.LeagueRepository.Store(ctx, &league); err != nil {
 					return err
 				}
 			}
 		}
 
 	} else {
-		err = dl.LeagueRepository.StoreAll(&leagueData.Leagues)
+		err = dl.LeagueRepository.StoreAll(ctx, leagueData.Leagues)
 		if err != nil {
 			return err
 		}
@@ -122,23 +126,24 @@ func (dl *DataLoader) storeLeagues() error {
 
 // storeLeagueDetails gets data from api and stores it into DB (upsert + series refresh).
 // Records refreshed within detailsRefreshInterval are skipped to spare the Valve API.
-func (dl *DataLoader) storeLeagueDetails(leagueID int) error {
-	exist, err := dl.LeagueDetailsRepository.ExistsByID(leagueID)
+func (dl *DataLoader) storeLeagueDetails(ctx context.Context, leagueID int) error {
+	exist, err := dl.LeagueDetailsRepository.ExistsByID(ctx, leagueID)
 	if err != nil {
 		return err
 	}
 
 	if exist {
-		stored, gerr := dl.LeagueDetailsRepository.GetByID(leagueID)
+		stored, gerr := dl.LeagueDetailsRepository.GetByID(ctx, leagueID)
 		switch {
 		case gerr != nil:
-			log.Printf("storeLeagueDetails: GetByID(%d) error: %s", leagueID, gerr)
+			return gerr
 		case time.Since(time.Unix(stored.UpdatedTimestamp, 0)) < detailsRefreshInterval:
-			return nil
+			// A successful metadata refresh does not imply the logo downloaded.
+			return dl.downloadLeagueImage(ctx, leagueID)
 		}
 	}
 
-	leagueDetails, err := api.LoadLeagueDetails(leagueID)
+	leagueDetails, err := api.LoadLeagueDetails(ctx, leagueID)
 	if err != nil {
 		return err
 	}
@@ -150,7 +155,7 @@ func (dl *DataLoader) storeLeagueDetails(leagueID int) error {
 	// add stream info
 	leagueDetails.Details.Streams = leagueDetails.Streams
 
-	if err := dl.LeagueSeriesRepository.ReplaceAllForLeague(leagueID, leagueDetails.SeriesInfos); err != nil {
+	if err := dl.LeagueSeriesRepository.ReplaceAllForLeague(ctx, leagueID, leagueDetails.SeriesInfos); err != nil {
 		return err
 	}
 
@@ -163,32 +168,34 @@ func (dl *DataLoader) storeLeagueDetails(leagueID int) error {
 			}
 			seen[teamID] = true
 
-			exists, err := dl.TeamRepository.ExistsByID(teamID)
+			exists, err := dl.TeamRepository.ExistsByID(ctx, teamID)
 			if err != nil {
 				// transient DB failure is not a missing team - do not fan out an api request for it
-				log.Printf("storeLeagueDetails: ExistsByID(%d) error: %s", teamID, err)
+				slog.WarnContext(ctx, "check series team", "team_id", teamID, "error", err)
 				continue
 			}
 
 			if !exists {
-				dl.LoadTeam <- teamID
+				if err := enqueue(ctx, dl.LoadTeam, teamID); err != nil {
+					return err
+				}
 			}
 		}
 	}
 
 	leagueDetails.Details.UpdatedTimestamp = time.Now().Unix()
 	if exist {
-		err = dl.LeagueDetailsRepository.Update(&leagueDetails.Details)
+		err = dl.LeagueDetailsRepository.Update(ctx, &leagueDetails.Details)
 	} else {
-		err = dl.LeagueDetailsRepository.Store(&leagueDetails.Details)
+		err = dl.LeagueDetailsRepository.Store(ctx, &leagueDetails.Details)
 	}
 	if err != nil {
 		return err
 	}
 
-	err = dl.downloadLeagueImage(leagueID)
+	err = dl.downloadLeagueImage(ctx, leagueID)
 	if err != nil {
-		log.Printf("download image error %s", err)
+		slog.WarnContext(ctx, "download league image", "league_id", leagueID, "error", err)
 	}
 
 	return nil

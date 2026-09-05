@@ -1,17 +1,18 @@
 package api
 
 import (
+	"context"
 	e "dota_league/error"
 	"dota_league/model"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 )
 
 // LoadLiveGames loads json from the Dota API
-func LoadLiveGames() (*model.LiveGames, error) {
+func LoadLiveGames(ctx context.Context) (*model.LiveGames, error) {
 	op := "api.LoadLiveGames"
-	body, err := doRequest("https://www.dota2.com/webapi/IDOTA2League/GetLiveGames/v001?")
+	body, err := doRequest(ctx, "https://www.dota2.com/webapi/IDOTA2League/GetLiveGames/v001?")
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
@@ -26,17 +27,17 @@ func LoadLiveGames() (*model.LiveGames, error) {
 }
 
 // GetLiveGameStats - get live game data based on serverSteamID
-func GetLiveGameStats(serverSteamID string) (*model.LiveGameDetails, error) {
+func GetLiveGameStats(ctx context.Context, serverSteamID string) (*model.LiveGameDetails, error) {
 	op := "api.GetLiveGameStats"
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2MatchStats/GetRealtimeStats/v001?server_steam_id=%s", serverSteamID)
 
-	body, err := doRequest(url)
+	body, err := doRequest(ctx, url)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
 	defer closeResponse(body)
-	responseData, err := ioutil.ReadAll(body)
+	responseData, err := io.ReadAll(body)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}

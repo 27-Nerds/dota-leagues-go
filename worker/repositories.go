@@ -1,66 +1,69 @@
 package worker
 
-import "dota_league/model"
+import (
+	"context"
+	"dota_league/model"
+)
 
 // LiveGameDetailsRepository provides persistence operations needed by background refreshes.
 type LiveGameDetailsRepository interface {
-	Store(*model.LiveGameDetails) error
-	ExistsByID(id string) (bool, error)
-	Update(lgm *model.LiveGameDetails) error
+	Store(context.Context, *model.LiveGameDetails) error
+	ExistsByID(ctx context.Context, id string) (bool, error)
+	Update(ctx context.Context, lgm *model.LiveGameDetails) error
 }
 
 // PlayerRepository provides persistence operations needed by background refreshes.
 type PlayerRepository interface {
-	Store(*model.Player) error
-	StoreAll(*[]model.Player) error
-	ExistsByID(id int) (bool, error)
-	HasAnyRecord() (bool, error)
+	Store(context.Context, *model.Player) error
+	StoreAll(context.Context, []model.Player) error
+	ExistsByID(ctx context.Context, id int) (bool, error)
+	HasAnyRecord(ctx context.Context) (bool, error)
 }
 
 // TeamRepository provides persistence operations needed by background refreshes.
 type TeamRepository interface {
-	Store(*model.Team) error
-	Update(*model.Team) error
-	GetByID(id int) (*model.Team, error)
-	ExistsByID(id int) (bool, error)
+	Store(context.Context, *model.Team) error
+	Update(context.Context, *model.Team) error
+	GetByID(ctx context.Context, id int) (*model.Team, error)
+	ExistsByID(ctx context.Context, id int) (bool, error)
 }
 
 // LeagueDetailsRepository provides persistence operations needed by background refreshes.
 type LeagueDetailsRepository interface {
-	Store(*model.LeagueDetails) error
-	Update(*model.LeagueDetails) error
-	ExistsByID(id int) (bool, error)
-	GetAllActiveForTiers(tiers []int) (*[]model.LeagueDetails, error)
-	GetByID(id int) (*model.LeagueDetails, error)
-	UpdateLiveStatus(key int, newStatus bool) error
-	UpdateTotalPrizePool(key int, prizePool int) error
-	SetAllAsNotLive() error
+	Store(context.Context, *model.LeagueDetails) error
+	Update(context.Context, *model.LeagueDetails) error
+	ExistsByID(ctx context.Context, id int) (bool, error)
+	GetAllActiveForTiers(ctx context.Context, tiers []int) ([]model.LeagueDetails, error)
+	GetByID(ctx context.Context, id int) (*model.LeagueDetails, error)
+	UpdateLiveStatus(ctx context.Context, key int, newStatus bool) error
+	UpdateTotalPrizePool(ctx context.Context, key int, prizePool int) error
+	SetAllAsNotLive(ctx context.Context) error
 }
 
 // LeagueRepository provides persistence operations needed by background refreshes.
 type LeagueRepository interface {
-	Store(*model.League) error
-	StoreAll(*[]model.League) error
-	ExistsByID(id int) (bool, error)
-	HasAnyRecord() (bool, error)
-	GetAllActive() (*[]model.LeagueDetails, error)
+	Store(context.Context, *model.League) error
+	StoreAll(context.Context, []model.League) error
+	ExistsByID(ctx context.Context, id int) (bool, error)
+	HasAnyRecord(ctx context.Context) (bool, error)
+	GetAllActive(ctx context.Context) ([]model.LeagueDetails, error)
 }
 
 // TeamRosterRepository provides persistence operations needed by background refreshes.
 type TeamRosterRepository interface {
-	Store(*model.TeamRoster) error
-	Update(*model.TeamRoster) error
-	ExistsByTeamID(TeamID int) (bool, error)
+	Store(context.Context, *model.TeamRoster) error
+	Update(context.Context, *model.TeamRoster) error
+	ExistsByTeamID(ctx context.Context, TeamID int) (bool, error)
 }
 
 // GameRepository provides persistence operations needed by background refreshes.
 type GameRepository interface {
-	StoreAll(games *[]model.Game) error
-	GetAll() (*[]model.Game, error)
-	RemoveAll() error
+	StoreAll(ctx context.Context, games []model.Game) error
+	GetAll(ctx context.Context) ([]model.Game, error)
+	RemoveAll(ctx context.Context) error
 }
 
 // LeagueSeriesRepository provides persistence operations needed by background refreshes.
 type LeagueSeriesRepository interface {
-	ReplaceAllForLeague(leagueID int, series []model.SeriesInfo) error
+	ReplaceAllForLeague(ctx context.Context, leagueID int, series []model.SeriesInfo) error
 }

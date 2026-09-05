@@ -1,95 +1,57 @@
 package worker
 
 import (
+	"context"
 	"dota_league/api"
-	"log"
 )
 
-func (dl *DataLoader) performGamesUpdate() error {
-	log.Println("refreshing live games...")
-
-	liveGames, err := api.LoadLiveGames()
+func (dl *DataLoader) performGamesUpdate(ctx context.Context) error {
+	liveGames, err := api.LoadLiveGames(ctx)
 	if err != nil {
-		log.Printf("performGamesUpdate LoadLiveGames error: %s", err)
+		return err
+	}
+	previousGames, err := dl.GameRepository.GetAll(ctx)
+	if err != nil {
 		return err
 	}
 
-	// do not do anything if there are no new data
+	activeLeagues := make(map[int]bool)
+	for _, game := range liveGames.Games {
+		activeLeagues[game.LeagueID] = true
+		dl.LiveGamesManager.AddGame(game)
+	}
+	finishedLeagues := make(map[int]bool)
+	for _, game := range previousGames {
+		if !activeLeagues[game.LeagueID] {
+			finishedLeagues[game.LeagueID] = true
+		}
+	}
+
+	for leagueID := range activeLeagues {
+		exists, err := dl.LeagueDetailsRepository.ExistsByID(ctx, leagueID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			if err := dl.LeagueDetailsRepository.UpdateLiveStatus(ctx, leagueID, true); err != nil {
+				return err
+			}
+		} else if err := enqueue(ctx, dl.LoadLeagueDetails, leagueID); err != nil {
+			return err
+		}
+	}
+	for leagueID := range finishedLeagues {
+		if err := dl.LeagueDetailsRepository.UpdateLiveStatus(ctx, leagueID, false); err != nil {
+			return err
+		}
+	}
+
+	// An empty upstream snapshot must also clear games that have finished.
+	if err := dl.GameRepository.RemoveAll(ctx); err != nil {
+		return err
+	}
 	if len(liveGames.Games) == 0 {
-		log.Println("No New games fetched")
 		return nil
 	}
-
-	previousGames, err := dl.GameRepository.GetAll()
-	if err != nil {
-		log.Printf("performGamesUpdate error: %s", err)
-		return err
-	}
-
-	finishedLeagues := make(map[int]bool)
-	activeLeagues := make(map[int]bool)
-
-	//TODO maybe move it to db query
-
-	// build the list of finished games
-	if len(*previousGames) > 0 {
-		for _, pGame := range *previousGames {
-
-			found := false
-			for _, lGame := range liveGames.Games {
-				if lGame.LeagueID == pGame.LeagueID {
-					found = true
-					activeLeagues[lGame.LeagueID] = true
-					break
-				}
-			}
-			if !found {
-				finishedLeagues[pGame.LeagueID] = true
-			}
-		}
-		log.Printf("finised leagues: %v", finishedLeagues)
-		log.Printf("Active leagues: %v", activeLeagues)
-
-		// add games to the manager
-		for _, lGame := range liveGames.Games {
-			dl.LiveGamesManager.AddGame(lGame)
-		}
-	}
-
-	for activeLeagueID := range activeLeagues {
-		leagueDetailsExist, err := dl.LeagueDetailsRepository.ExistsByID(activeLeagueID)
-		if err != nil {
-			log.Printf("ExistsByID error: %v", err)
-		}
-		if leagueDetailsExist {
-			err = dl.LeagueDetailsRepository.UpdateLiveStatus(activeLeagueID, true)
-			if err != nil {
-				log.Printf("UpdateLiveStatus error: %v", err)
-			}
-		} else {
-			// if there is no league in the db, add it
-			dl.LoadLeagueDetails <- activeLeagueID
-		}
-	}
-
-	for finishedLeagueID := range finishedLeagues {
-		err = dl.LeagueDetailsRepository.UpdateLiveStatus(finishedLeagueID, false)
-		if err != nil {
-			log.Printf("UpdateLiveStatus error: %v", err)
-		}
-	}
-
-	err = dl.GameRepository.RemoveAll()
-	if err != nil {
-		log.Printf("performGamesUpdate error: %s", err)
-		return err
-	}
-
-	err = dl.GameRepository.StoreAll(&liveGames.Games)
-	if err != nil {
-		log.Printf("performGamesUpdate error: %s", err)
-		return err
-	}
-
-	return nil
+	return dl.GameRepository.StoreAll(ctx, liveGames.Games)
 }

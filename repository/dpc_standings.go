@@ -19,11 +19,11 @@ func NewDPCStandingsRepository(Conn Database) *DPCStandingsRepository {
 }
 
 // Store upserts the latest dpc standings snapshot
-func (r *DPCStandingsRepository) Store(std *model.DPCStandings) error {
+func (r *DPCStandingsRepository) Store(ctx context.Context, std *model.DPCStandings) error {
 	const op = "DPCStandingsRepository.Store"
 
 	std.DBKey = dpcKey
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := r.Conn.Insert(ctx, "dpc_standings", std)
@@ -37,14 +37,14 @@ func (r *DPCStandingsRepository) Store(std *model.DPCStandings) error {
 }
 
 // Get returns the stored dpc standings snapshot
-func (r *DPCStandingsRepository) Get() (*model.DPCStandings, error) {
+func (r *DPCStandingsRepository) Get(ctx context.Context) (*model.DPCStandings, error) {
 	const op = "DPCStandingsRepository.Get"
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	var std model.DPCStandings
-	_, err := r.Conn.Query(ctx, "FOR d IN dpc_standings FILTER d._key == @id RETURN d", map[string]interface{}{
+	_, err := r.Conn.Query(ctx, "FOR d IN dpc_standings FILTER d._key == @id RETURN d", map[string]any{
 		"id": dpcKey,
 	}, &std)
 	if err != nil {

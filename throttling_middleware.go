@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -9,18 +10,6 @@ import (
 	"github.com/throttled/throttled/v2"
 	"github.com/throttled/throttled/v2/store/memstore"
 )
-
-var (
-	quota       throttled.RateQuota
-	rateLimiter *throttled.GCRARateLimiter
-)
-
-// if throttled is initialized in init, it will be global for all the requests that are  using it
-// if we need individual throttling for each route, we can move this code into IPRateLimit func
-// also this logic can be moved from Group Level middleware to Root Level
-// https://echo.labstack.com/middleware
-// the good idea is to move from memstore to redisstore
-// https://github.com/throttled/throttled/blob/master/store/redigostore/redigostore.go
 
 // IPRateLimit rate limiting with default config
 func IPRateLimit() echo.MiddlewareFunc {
@@ -30,31 +19,35 @@ func IPRateLimit() echo.MiddlewareFunc {
 // IPRateLimitWithConfig rate limiting middleware with config
 func IPRateLimitWithConfig(perMin int, burst int) echo.MiddlewareFunc {
 
-	log.Println("init")
-	store, err := memstore.New(65536)
+	store, err := memstore.NewCtx(65536)
 	if err != nil {
-		log.Panicf("IPRateLimit - ipRateLimiter.Get - err: %v, ", err)
-		//return nil
+		panic(fmt.Errorf("create rate limit store: %w", err))
 	}
 
-	quota = throttled.RateQuota{
+	quota := throttled.RateQuota{
 		MaxRate:  throttled.PerMin(perMin),
 		MaxBurst: burst,
 	}
-	rateLimiter, err = throttled.NewGCRARateLimiter(store, quota)
+	rateLimiter, err := throttled.NewGCRARateLimiterCtx(store, quota)
 	if err != nil {
-		log.Panicf("IPRateLimit - ipRateLimiter.Get - err: %v, ", err)
-		//	return nil
+		panic(fmt.Errorf("create rate limiter: %w", err))
 	}
 
 	// Return middleware handler
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) (err error) {
+			// Echo's root static-file route serves logos and frontend assets.
+			// These requests must not consume the API's per-IP quota. Match the
+			// registered route, so API parameters ending in .png remain limited.
+			if c.Path() == "/*" && c.Request().Method == http.MethodGet {
+				return next(c)
+			}
+
 			ip := c.RealIP()
 
-			isLimited, RateLimitResult, err := rateLimiter.RateLimit(ip, 1)
+			isLimited, RateLimitResult, err := rateLimiter.RateLimitCtx(c.Request().Context(), ip, 1)
 			if err != nil {
-				log.Printf("IPRateLimit - ipRateLimiter.Get - err: %v, %s on %s", err, ip, c.Request().URL)
+				slog.ErrorContext(c.Request().Context(), "check rate limit", "ip", ip, "path", c.Path(), "error", err)
 				return c.JSON(http.StatusInternalServerError, echo.Map{
 					"success": false,
 					"message": err,
@@ -67,7 +60,7 @@ func IPRateLimitWithConfig(perMin int, burst int) echo.MiddlewareFunc {
 			h.Set("X-RateLimit-Reset", strconv.Itoa(int(RateLimitResult.ResetAfter.Milliseconds()/1000)))
 
 			if isLimited {
-				log.Printf("Too Many Requests from %s on %s", ip, c.Request().URL)
+				slog.WarnContext(c.Request().Context(), "rate limit exceeded", "ip", ip, "path", c.Path())
 				return c.JSON(http.StatusTooManyRequests, echo.Map{
 					"success": false,
 					"message": "Too Many Requests on " + c.Request().URL.String(),

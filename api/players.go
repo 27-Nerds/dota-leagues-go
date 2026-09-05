@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	e "dota_league/error"
 	"dota_league/model"
 	"encoding/json"
@@ -8,9 +9,9 @@ import (
 )
 
 // LoadPlayers load players from dota api
-func LoadPlayers() (*model.PlayersData, error) {
+func LoadPlayers(ctx context.Context) (*model.PlayersData, error) {
 	op := "api.LoadPlayers"
-	body, err := doRequest("https://www.dota2.com/webapi/IDOTA2Fantasy/GetProPlayerInfo/v001")
+	body, err := doRequest(ctx, "https://www.dota2.com/webapi/IDOTA2Fantasy/GetProPlayerInfo/v001")
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
@@ -26,10 +27,10 @@ func LoadPlayers() (*model.PlayersData, error) {
 }
 
 // LoadSinglePlayer load info from dota api for given playerID
-func LoadSinglePlayer(playerID int) (*model.Player, error) {
+func LoadSinglePlayer(ctx context.Context, playerID int) (*model.Player, error) {
 	op := "api.LoadSinglePlayer"
 	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2DPC/GetPlayerInfo/v001?account_id=%d", playerID)
-	body, err := doRequest(url)
+	body, err := doRequest(ctx, url)
 
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}

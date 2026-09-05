@@ -18,9 +18,9 @@ func NewPlayerRepository(Conn Database) *PlayerRepository {
 }
 
 // Store store player model in db
-func (pr *PlayerRepository) Store(player *model.Player) error {
+func (pr *PlayerRepository) Store(ctx context.Context, player *model.Player) error {
 	player.DBKey = strconv.Itoa(player.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	err := pr.Conn.Insert(ctx, "players", player)
@@ -34,17 +34,17 @@ func (pr *PlayerRepository) Store(player *model.Player) error {
 }
 
 // StoreAll store array of records in one batch
-func (pr *PlayerRepository) StoreAll(players *[]model.Player) error {
+func (pr *PlayerRepository) StoreAll(ctx context.Context, players []model.Player) error {
 	// set db keys for all elements
-	for i, player := range *players {
-		(*players)[i].DBKey = strconv.Itoa(player.ID)
+	for i, player := range players {
+		players[i].DBKey = strconv.Itoa(player.ID)
 	}
 
 	// is 2 seconds enough?
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	err := pr.Conn.InsertMany(ctx, "players", *players)
+	err := pr.Conn.InsertMany(ctx, "players", players)
 	if err != nil {
 		return &e.Error{Op: "PlayerRepository.StoreAll", Err: err}
 	}
@@ -53,9 +53,9 @@ func (pr *PlayerRepository) StoreAll(players *[]model.Player) error {
 }
 
 // ExistsByID check wether record exists in the DB
-func (pr *PlayerRepository) ExistsByID(id int) (bool, error) {
+func (pr *PlayerRepository) ExistsByID(ctx context.Context, id int) (bool, error) {
 
-	exists, err := existsInColByID(pr.Conn, "players", strconv.Itoa(id))
+	exists, err := existsInColByID(ctx, pr.Conn, "players", strconv.Itoa(id))
 	if err != nil {
 		return false, &e.Error{Op: "PlayerRepository.ExistsByID", Err: err}
 	}
@@ -64,11 +64,11 @@ func (pr *PlayerRepository) ExistsByID(id int) (bool, error) {
 }
 
 // HasAnyRecord return true if there are at least one record in the DB
-func (pr *PlayerRepository) HasAnyRecord() (bool, error) {
+func (pr *PlayerRepository) HasAnyRecord(ctx context.Context) (bool, error) {
 	query := "RETURN LENGTH(FOR d IN players LIMIT 1 RETURN true) > 0"
 	var exists bool
 
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	_, err := pr.Conn.Query(ctx, query, nil, &exists)
 	if e.IsNotFound(err) {

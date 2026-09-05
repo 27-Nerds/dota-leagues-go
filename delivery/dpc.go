@@ -2,8 +2,7 @@
 package delivery
 
 import (
-	e "dota_league/error"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -36,9 +35,9 @@ func (dd *DPCDelivery) getStandings(c echo.Context) error {
 	meta.Offset = 0
 	meta.Total = 1
 
-	dpcFromDB, err := dd.DPCHandler.Get()
+	dpcFromDB, err := dd.DPCHandler.Get(c.Request().Context())
 	if err != nil {
-		log.Printf("getStandings Delivery error: %+v,  message: %+v", err, e.ErrorMessage(err))
+		slog.ErrorContext(c.Request().Context(), "get standings", "error", err)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
 
@@ -59,9 +58,9 @@ func (dd *DPCDelivery) getLeagueResults(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, "Invalid league id")
 	}
 
-	resultsFromDB, herr := dd.DPCResultsHandler.Get(leagueID)
+	resultsFromDB, herr := dd.DPCResultsHandler.Get(c.Request().Context(), leagueID)
 	if herr != nil {
-		log.Printf("getLeagueResults Delivery error: %+v,  message: %+v", herr, e.ErrorMessage(herr))
+		slog.ErrorContext(c.Request().Context(), "get league results", "error", herr)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
 
@@ -85,9 +84,9 @@ func (dd *DPCDelivery) getMatchMinimal(c echo.Context) error {
 
 	matchID := c.Param("matchID")
 
-	matchFromDB, herr := dd.MatchMinimalHandler.Get(leagueID, matchID)
+	matchFromDB, herr := dd.MatchMinimalHandler.Get(c.Request().Context(), leagueID, matchID)
 	if herr != nil {
-		log.Printf("getMatchMinimal Delivery error: %+v,  message: %+v", herr, e.ErrorMessage(herr))
+		slog.ErrorContext(c.Request().Context(), "get match", "error", herr)
 		return echo.NewHTTPError(http.StatusBadGateway, "Please try again later")
 	}
 

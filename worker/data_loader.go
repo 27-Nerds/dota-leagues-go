@@ -2,17 +2,17 @@
 package worker
 
 import (
-	"log"
+	"context"
+	"log/slog"
+	"sync"
 	"time"
 )
 
 // channelBuffer absorbs short bursts; producers wait when consumers fall behind.
 const channelBuffer = 1024
-
-// detailsRefreshInterval - do not refetch a league/team that was refreshed within this interval
 const detailsRefreshInterval = 24 * time.Hour
 
-// DataLoader struct
+// DataLoader owns the background refresh jobs and their shutdown.
 type DataLoader struct {
 	LeagueRepository          LeagueRepository
 	LeagueDetailsRepository   LeagueDetailsRepository
@@ -25,15 +25,14 @@ type DataLoader struct {
 	LoadLeagueDetails         chan int
 	LoadTeam                  chan int
 	LoadSinglePlayer          chan int
-	LeaguesTicker             *time.Ticker
-	GamesTicker               *time.Ticker
-	PrizePoolTicker           *time.Ticker
-	PlayersTicker             *time.Ticker
 	LiveGamesManager          *LiveGamesManager
+	cancel                    context.CancelFunc
+	wg                        sync.WaitGroup
 }
 
-// NewDataLoader - create DataLoader and run worker
+// NewDataLoader starts refresh jobs that live until ctx is canceled or Stop is called.
 func NewDataLoader(
+	ctx context.Context,
 	lr LeagueRepository,
 	ldr LeagueDetailsRepository,
 	gr GameRepository,
@@ -43,114 +42,90 @@ func NewDataLoader(
 	lsr LeagueSeriesRepository,
 	lgdr LiveGameDetailsRepository,
 ) *DataLoader {
-
-	dataLoader := &DataLoader{
-		LeagueRepository:          lr,
-		LeagueDetailsRepository:   ldr,
-		GameRepository:            gr,
-		PlayerRepository:          pr,
-		TeamRepository:            tr,
-		TeamRosterRepository:      trr,
-		LeagueSeriesRepository:    lsr,
-		LiveGameDetailsRepository: lgdr,
-		LoadLeagueDetails:         make(chan int, channelBuffer),
-		LoadTeam:                  make(chan int, channelBuffer),
-		LoadSinglePlayer:          make(chan int, channelBuffer),
-
-		//First leagues tick 2 seconds after start
-		LeaguesTicker: time.NewTicker(2 * time.Second),
-
-		// update live games every minute
-		GamesTicker: time.NewTicker(1 * time.Minute),
-
-		// update prizepool every hour
-		PrizePoolTicker: time.NewTicker(1 * time.Hour),
-
-		//First players tick 10 seconds after start
-		PlayersTicker: time.NewTicker(10 * time.Second),
+	ctx, cancel := context.WithCancel(ctx)
+	dl := &DataLoader{
+		LeagueRepository: lr, LeagueDetailsRepository: ldr,
+		GameRepository: gr, PlayerRepository: pr,
+		TeamRepository: tr, TeamRosterRepository: trr,
+		LeagueSeriesRepository: lsr, LiveGameDetailsRepository: lgdr,
+		LoadLeagueDetails: make(chan int, channelBuffer),
+		LoadTeam:          make(chan int, channelBuffer),
+		LoadSinglePlayer:  make(chan int, channelBuffer),
+		cancel:            cancel,
 	}
-	dataLoader.LiveGamesManager = NewLiveGamesManager(dataLoader.LiveGameDetailsRepository)
-
-	go dataLoader.run()
-	go dataLoader.runLoadLeagueDetails()
-	go dataLoader.runLoadSinglePlayer()
-	go dataLoader.runLoadTeam()
-
-	return dataLoader
+	dl.LiveGamesManager = NewLiveGamesManager(ctx, lgdr)
+	dl.wg.Go(func() { consume(ctx, "league details", dl.LoadLeagueDetails, dl.storeLeagueDetails) })
+	dl.wg.Go(func() { consume(ctx, "team", dl.LoadTeam, dl.storeTeam) })
+	dl.wg.Go(func() { consume(ctx, "player", dl.LoadSinglePlayer, dl.storeSinglePlayer) })
+	dl.wg.Go(func() {
+		// Reset stale live flags before starting refreshes.
+		reportUpdate(ctx, "reset league live status", dl.LeagueDetailsRepository.SetAllAsNotLive(ctx))
+		if ctx.Err() != nil {
+			return
+		}
+		dl.wg.Go(func() { runPeriodic(ctx, "leagues", 2*time.Second, 12*time.Hour, dl.performLeaguesUpdate) })
+		dl.wg.Go(func() { runPeriodic(ctx, "games", time.Minute, time.Minute, dl.performGamesUpdate) })
+		dl.wg.Go(func() { runPeriodic(ctx, "prizepool", time.Hour, time.Hour, dl.performPrizePoolUpdate) })
+		dl.wg.Go(func() { runPeriodic(ctx, "players", 10*time.Second, 12*time.Hour, dl.performPlayersUpdate) })
+	})
+	return dl
 }
 
-func (dl *DataLoader) run() {
-	defer dl.stop()
+// Stop cancels in-flight work and waits for every worker to exit. It is safe to call repeatedly.
+func (dl *DataLoader) Stop() {
+	dl.cancel()
+	dl.wg.Wait()
+	dl.LiveGamesManager.Stop()
+}
 
-	// after start we need to set all leagues as inactive
-	if err := dl.LeagueDetailsRepository.SetAllAsNotLive(); err != nil {
-		log.Printf("reset league live status: %v", err)
-	}
-
+// Each schedule owns one timer and executes one update at a time. The next delay
+// starts after completion, so slow upstream responses cannot pile up refresh jobs.
+func runPeriodic(ctx context.Context, name string, first, interval time.Duration, update func(context.Context) error) {
+	timer := time.NewTimer(first)
+	defer timer.Stop()
 	for {
 		select {
-		case <-dl.LeaguesTicker.C:
-
-			// next tick in 12 hours
-			dl.LeaguesTicker = time.NewTicker(12 * time.Hour)
-
-			go runUpdate("leagues", dl.performLeaguesUpdate)
-
-		case <-dl.GamesTicker.C:
-			go runUpdate("games", dl.performGamesUpdate)
-
-		case <-dl.PrizePoolTicker.C:
-			go runUpdate("prizepool", dl.performPrizePoolUpdate)
-
-		case <-dl.PlayersTicker.C:
-
-			// next players tick in 12 hours
-			dl.PlayersTicker = time.NewTicker(12 * time.Hour)
-
-			go runUpdate("players", dl.performPlayersUpdate)
-		}
-
-	}
-}
-
-func (dl *DataLoader) runLoadLeagueDetails() {
-	for leagueID := range dl.LoadLeagueDetails {
-		if err := dl.storeLeagueDetails(leagueID); err != nil {
-			log.Printf("storeLeagueDetails error: %s", err)
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			if ctx.Err() != nil {
+				return
+			}
+			reportUpdate(ctx, name, update(ctx))
+			timer.Reset(interval)
 		}
 	}
 }
 
-func (dl *DataLoader) runLoadTeam() {
-	for teamID := range dl.LoadTeam {
-		if err := dl.storeTeam(teamID); err != nil {
-			log.Printf("storeTeam error: %s", err)
+func consume(ctx context.Context, name string, jobs <-chan int, update func(context.Context, int) error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case id, ok := <-jobs:
+			if !ok || ctx.Err() != nil {
+				return
+			}
+			reportUpdate(ctx, name, update(ctx, id))
 		}
 	}
 }
 
-func (dl *DataLoader) runLoadSinglePlayer() {
-	for playerID := range dl.LoadSinglePlayer {
-		if err := dl.storeSinglePlayer(playerID); err != nil {
-			log.Printf("storeSinglePlayer error: %s", err)
-		}
+// Queues remain open: cancellation releases both consumers and blocked producers.
+func enqueue(ctx context.Context, jobs chan<- int, id int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case jobs <- id:
+		return nil
 	}
 }
 
-func (dl *DataLoader) stop() {
-	dl.LeaguesTicker.Stop()
-	dl.GamesTicker.Stop()
-	dl.PrizePoolTicker.Stop()
-	dl.PlayersTicker.Stop()
-
-	close(dl.LoadLeagueDetails)
-	close(dl.LoadTeam)
-	close(dl.LoadSinglePlayer)
-}
-
-// runUpdate reports errors from scheduled work at the goroutine boundary.
-func runUpdate(name string, update func() error) {
-	if err := update(); err != nil {
-		log.Printf("%s update failed: %v", name, err)
+func reportUpdate(ctx context.Context, name string, err error) {
+	if err != nil && ctx.Err() == nil {
+		slog.ErrorContext(ctx, "refresh failed", "job", name, "error", err)
 	}
 }

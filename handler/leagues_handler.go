@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	e "dota_league/error"
 	"dota_league/model"
 	"strconv"
@@ -18,13 +19,13 @@ func NewLeaguesHandler(ldr LeagueDetailsReader, lsr LeagueSeriesReader) *Leagues
 }
 
 // GetSeries returns league series (matchup schedule) with team names joined from teams collection
-func (lh *LeaguesHandler) GetSeries(id string, offset int, limit int) (*[]model.LeagueSeries, int64, error) {
+func (lh *LeaguesHandler) GetSeries(ctx context.Context, id string, offset int, limit int) ([]model.LeagueSeries, int64, error) {
 	idInt, err := strconv.Atoi(id)
 	if err != nil {
 		return nil, 0, &e.Error{Code: e.ENOTFOUND, Op: "GetSeries", Err: err}
 	}
 
-	seriesFromDB, totalCount, err := lh.SeriesRepo.GetAllByLeague(idInt, offset, limit)
+	seriesFromDB, totalCount, err := lh.SeriesRepo.GetAllByLeague(ctx, idInt, offset, limit)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "LeaguesHandler.GetSeries", Err: err}
 	}
@@ -34,8 +35,8 @@ func (lh *LeaguesHandler) GetSeries(id string, offset int, limit int) (*[]model.
 
 // GetAllActive performs DB query and return results,
 // second returning value is total count
-func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDetails, int64, error) {
-	leaguesFromDB, totalCount, err := lh.LeagueDetailsRepository.GetAllActive(offset, limit)
+func (lh *LeaguesHandler) GetAllActive(ctx context.Context, offset int, limit int) ([]model.LeagueDetails, int64, error) {
+	leaguesFromDB, totalCount, err := lh.LeagueDetailsRepository.GetAllActive(ctx, offset, limit)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
 	}
@@ -44,7 +45,7 @@ func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDe
 }
 
 // GetByID performs DB query and return results
-func (lh *LeaguesHandler) GetByID(id string) (*model.LeagueDetails, error) {
+func (lh *LeaguesHandler) GetByID(ctx context.Context, id string) (*model.LeagueDetails, error) {
 	leagueResponse := model.LeagueDetails{}
 
 	idInt, err := strconv.Atoi(id)
@@ -53,7 +54,7 @@ func (lh *LeaguesHandler) GetByID(id string) (*model.LeagueDetails, error) {
 		return &leagueResponse, nil
 	}
 
-	data, err := lh.LeagueDetailsRepository.GetByID(idInt)
+	data, err := lh.LeagueDetailsRepository.GetByID(ctx, idInt)
 
 	if err != nil {
 		return nil, err

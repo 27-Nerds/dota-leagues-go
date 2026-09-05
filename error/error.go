@@ -3,9 +3,10 @@ package e
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
-	"gopkg.in/go-playground/validator.v9"
+	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -27,6 +28,9 @@ type Error struct {
 	Op  string
 	Err error
 }
+
+// Unwrap exposes the underlying error to errors.Is and errors.As.
+func (e *Error) Unwrap() error { return e.Err }
 
 // Error returns the string representation of the error message.
 func (e *Error) Error() string {
@@ -53,34 +57,42 @@ func (e *Error) Error() string {
 // ErrorMessage returns the human-readable message of the error, if available.
 // Otherwise returns a generic error message.
 func ErrorMessage(err error) string {
-	switch err.(type) {
-	case validator.ValidationErrors:
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		return err.Error()
 	}
 
+	var appError *Error
 	if err == nil {
 		return ""
-	} else if e, ok := err.(*Error); ok && e.Message != "" {
-		return e.Message
-	} else if ok && e.Err != nil {
-		return ErrorMessage(e.Err)
+	} else if errors.As(err, &appError) {
+		if appError.Message != "" {
+			return appError.Message
+		}
+		if appError.Err != nil {
+			return ErrorMessage(appError.Err)
+		}
 	}
 	return "An internal error has occurred. Please contact technical support."
 }
 
 // ErrorCode returns the code of the root error, if available. Otherwise returns EINTERNAL.
 func ErrorCode(err error) string {
-	switch err.(type) {
-	case validator.ValidationErrors:
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
 		return EINVALID
 	}
 
+	var appError *Error
 	if err == nil {
 		return ""
-	} else if e, ok := err.(*Error); ok && e.Code != "" {
-		return e.Code
-	} else if ok && e.Err != nil {
-		return ErrorCode(e.Err)
+	} else if errors.As(err, &appError) {
+		if appError.Code != "" {
+			return appError.Code
+		}
+		if appError.Err != nil {
+			return ErrorCode(appError.Err)
+		}
 	}
 	return EINTERNAL
 }
