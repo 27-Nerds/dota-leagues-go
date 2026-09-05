@@ -15,7 +15,7 @@ func LoadLiveGames() (*model.LiveGames, error) {
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	defer body.Close()
+	defer closeResponse(body)
 	liveGamesJSON := model.LiveGames{}
 	err = json.NewDecoder(body).Decode(&liveGamesJSON)
 	if err != nil {
@@ -26,17 +26,20 @@ func LoadLiveGames() (*model.LiveGames, error) {
 }
 
 // GetLiveGameStats - get live game data based on serverSteamID
-func GetLiveGameStats(serverSteamID int64) (*model.LiveGameDetails, error) {
+func GetLiveGameStats(serverSteamID string) (*model.LiveGameDetails, error) {
 	op := "api.GetLiveGameStats"
-	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2MatchStats/GetRealtimeStats/v001?server_steam_id=%d", serverSteamID)
+	url := fmt.Sprintf("https://www.dota2.com/webapi/IDOTA2MatchStats/GetRealtimeStats/v001?server_steam_id=%s", serverSteamID)
 
 	body, err := doRequest(url)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
-	defer body.Close()
+	defer closeResponse(body)
 	responseData, err := ioutil.ReadAll(body)
+	if err != nil {
+		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+	}
 
 	//sometimes api returns null
 	if string(responseData) == "null" {

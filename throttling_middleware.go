@@ -11,7 +11,6 @@ import (
 )
 
 var (
-	store       throttled.GCRAStore
 	quota       throttled.RateQuota
 	rateLimiter *throttled.GCRARateLimiter
 )

@@ -3,18 +3,17 @@ package handler
 import (
 	e "dota_league/error"
 	"dota_league/model"
-	"dota_league/repository"
 	"log"
 	"strconv"
 )
 
 // GameHandler controll struct
 type GameHandler struct {
-	gameRepository *repository.GameRepositoryInterface
+	gameRepository GameReader
 }
 
 // NewGameHandler create new game handler struct
-func NewGameHandler(gr *repository.GameRepositoryInterface) GamesHandlerInterface {
+func NewGameHandler(gr GameReader) *GameHandler {
 	return &GameHandler{gr}
 }
 
@@ -25,7 +24,7 @@ func (gh *GameHandler) GetLiveLeagueGames(leagueID string, offset int, limit int
 		return nil, 0, nil
 	}
 
-	games, totalCount, err := (*gh.gameRepository).GetForLeague(leagueIDInt, offset, limit)
+	games, totalCount, err := gh.gameRepository.GetForLeague(leagueIDInt, offset, limit)
 	if e.IsNotFound(err) {
 		return nil, totalCount, &e.Error{Code: e.ENOTFOUND, Op: "GameHandler.GetLiveLeagueGames", Err: err}
 	} else if err != nil {

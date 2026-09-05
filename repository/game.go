@@ -6,18 +6,17 @@ import (
 	e "dota_league/error"
 	"dota_league/model"
 	"strconv"
-	"time"
 
 	"github.com/arangodb/go-driver"
 )
 
 // GameRepository repository object
 type GameRepository struct {
-	Conn *db.Interface
+	Conn Database
 }
 
 // NewGameRepository creates new struct
-func NewGameRepository(Conn *db.Interface) GameRepositoryInterface {
+func NewGameRepository(Conn Database) *GameRepository {
 	return &GameRepository{Conn}
 }
 
@@ -36,14 +35,14 @@ func (gr *GameRepository) ExistsByID(id int64) (bool, error) {
 func (gr *GameRepository) StoreAll(games *[]model.Game) error {
 	// set db keys for all elements
 	for i, game := range *games {
-		(*games)[i].DbKey = strconv.FormatInt(game.ServerSteamID, 10)
+		(*games)[i].DBKey = game.ServerSteamID
 	}
 
 	// is 2 seconds enough?
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*gr.Conn).InsertMany(ctx, "games", *games)
+	err := gr.Conn.InsertMany(ctx, "games", *games)
 	if err != nil {
 		return &e.Error{Op: "GameRepository.StoreAll", Err: err}
 	}
@@ -54,10 +53,10 @@ func (gr *GameRepository) StoreAll(games *[]model.Game) error {
 // RemoveAll remove all records from the DB
 func (gr *GameRepository) RemoveAll() error {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*gr.Conn).ClearCollection(ctx, "games")
+	err := gr.Conn.ClearCollection(ctx, "games")
 	if err != nil {
 		return &e.Error{Op: "GameRepository.RemoveAll", Err: err}
 	}
@@ -76,11 +75,11 @@ func (gr *GameRepository) GetAll() (*[]model.Game, error) {
 	return games, err
 }
 
-// GetForLeague will return all live games for given leagueId
+// GetForLeague will return all live games for given leagueID
 func (gr *GameRepository) GetForLeague(leagueID int, offset int, limit int) (*[]model.Game, int64, error) {
-	query := "FOR d IN games FILTER d.league_id == @leagueId LIMIT @offset, @limit RETURN d"
+	query := "FOR d IN games FILTER d.league_id == @leagueID LIMIT @offset, @limit RETURN d"
 	bindVars := map[string]interface{}{
-		"leagueId": leagueID,
+		"leagueID": leagueID,
 		"offset":   offset,
 		"limit":    limit,
 	}
@@ -105,18 +104,18 @@ func (gr *GameRepository) queryAll(query string, bindVars map[string]interface{}
 
 	ct := context.Background()
 	if withTotalCount {
-		ct = driver.WithQueryFullCount(nil, true)
+		ct = driver.WithQueryFullCount(context.Background(), true)
 	}
-	ctx, cancel := context.WithTimeout(ct, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ct, dbTimeout)
 	defer cancel()
 
-	cursor, err := (*gr.Conn).QueryAll(ctx, query, bindVars)
+	cursor, err := gr.Conn.QueryAll(ctx, query, bindVars)
 	if driver.IsNotFound(err) {
 		return &games, totalCount, nil
 	} else if err != nil {
 		return nil, totalCount, &e.Error{Op: "GameRepository.queryAll", Err: err}
 	}
-	defer cursor.Close()
+	defer db.CloseCursor(cursor)
 
 	for {
 		var doc model.Game

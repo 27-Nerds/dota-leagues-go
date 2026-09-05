@@ -3,46 +3,61 @@ package handler
 import (
 	e "dota_league/error"
 	"dota_league/model"
-	"dota_league/repository"
 	"strconv"
 )
 
 // LeaguesHandler struct
 type LeaguesHandler struct {
-	LeagueDetailsRepository *repository.LeagueDetailsRepositoryInterface
+	LeagueDetailsRepository LeagueDetailsReader
+	SeriesRepo              LeagueSeriesReader
 }
 
 // NewLeaguesHandler return handler struct
-func NewLeaguesHandler(ldr *repository.LeagueDetailsRepositoryInterface) LeaguesHandlerInterface {
-	return &LeaguesHandler{ldr}
+func NewLeaguesHandler(ldr LeagueDetailsReader, lsr LeagueSeriesReader) *LeaguesHandler {
+	return &LeaguesHandler{ldr, lsr}
+}
+
+// GetSeries returns league series (matchup schedule) with team names joined from teams collection
+func (lh *LeaguesHandler) GetSeries(id string, offset int, limit int) (*[]model.LeagueSeries, int64, error) {
+	idInt, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, 0, &e.Error{Code: e.ENOTFOUND, Op: "GetSeries", Err: err}
+	}
+
+	seriesFromDB, totalCount, err := lh.SeriesRepo.GetAllByLeague(idInt, offset, limit)
+	if err != nil {
+		return nil, 0, &e.Error{Op: "LeaguesHandler.GetSeries", Err: err}
+	}
+
+	return seriesFromDB, totalCount, nil
 }
 
 // GetAllActive performs DB query and return results,
 // second returning value is total count
 func (lh *LeaguesHandler) GetAllActive(offset int, limit int) (*[]model.LeagueDetails, int64, error) {
-	leaguesFromDb, totalCount, err := (*lh.LeagueDetailsRepository).GetAllActive(offset, limit)
+	leaguesFromDB, totalCount, err := lh.LeagueDetailsRepository.GetAllActive(offset, limit)
 	if err != nil {
 		return nil, 0, &e.Error{Op: "LeaguesHandler.GetAllActive", Err: err}
 	}
 
-	return leaguesFromDb, totalCount, nil
+	return leaguesFromDB, totalCount, nil
 }
 
-// GetById performs DB query and return results
-func (lh *LeaguesHandler) GetById(id string) (*model.LeagueDetails, error) {
-    leagueResponse := model.LeagueDetails{}
+// GetByID performs DB query and return results
+func (lh *LeaguesHandler) GetByID(id string) (*model.LeagueDetails, error) {
+	leagueResponse := model.LeagueDetails{}
 
-    idInt, err := strconv.Atoi(id)
+	idInt, err := strconv.Atoi(id)
 
-    if err != nil {
-        return &leagueResponse, nil
-    }
+	if err != nil {
+		return &leagueResponse, nil
+	}
 
-    data, err := (*lh.LeagueDetailsRepository).GetById(idInt)
+	data, err := lh.LeagueDetailsRepository.GetByID(idInt)
 
-    if err != nil {
-        return nil, err
-    }
+	if err != nil {
+		return nil, err
+	}
 
-    return data, nil
+	return data, nil
 }

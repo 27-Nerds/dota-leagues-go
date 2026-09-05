@@ -1,3 +1,4 @@
+// Package e defines application errors and their classification.
 package e
 
 import (

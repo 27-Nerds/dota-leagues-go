@@ -18,6 +18,11 @@ dota_league
 
 __debug_bin
 
+### Local ###
+# local dev binary build (repo name without the -go suffix)
+dotaleagues
+.opencode/
+
 ### VisualStudioCode Patch ###
 # Ignore all local history of files
 .history

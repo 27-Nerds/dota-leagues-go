@@ -26,5 +26,5 @@ type Player struct {
 		Earnings  int `json:"earnings"`
 	} `json:"results,omitempty"`
 	TeamURLLogo string `json:"team_url_logo,omitempty"`
-	DbKey       string `json:"_key,omitempty"`
+	DBKey       string `json:"_key,omitempty"`
 }

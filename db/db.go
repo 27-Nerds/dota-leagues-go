@@ -1,17 +1,20 @@
+// Package db manages ArangoDB connections, queries, and transactions.
 package db
 
 import (
 	"context"
 	e "dota_league/error"
 	"fmt"
+	"log"
+	"time"
 
 	arango "github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/http"
 )
 
-// ArangoDb struct
-type ArangoDb struct {
-	Db *arango.Database
+// ArangoDB struct
+type ArangoDB struct {
+	DB arango.Database
 }
 
 // Connect to database
@@ -20,7 +23,7 @@ func Connect(ctx context.Context,
 	dbUser string,
 	dbPass string,
 	dbName string,
-) (Interface, error) {
+) (*ArangoDB, error) {
 	const op = "db.Connect"
 
 	var db arango.Database
@@ -42,22 +45,24 @@ func Connect(ctx context.Context,
 	db, err = c.Database(ctx, dbName)
 	if arango.IsNotFound(err) {
 		db, err = c.CreateDatabase(ctx, dbName, nil)
-	} else if err != nil {
+	}
+	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
 
-	return &ArangoDb{&db}, nil
+	return &ArangoDB{DB: db}, nil
 }
 
 // Collection create and get collection
-func (a *ArangoDb) collection(ctx context.Context, colName string) (arango.Collection, error) {
+func (a *ArangoDB) collection(ctx context.Context, colName string) (arango.Collection, error) {
 	var col arango.Collection
 
-	col, err := (*a.Db).Collection(ctx, colName)
+	col, err := a.DB.Collection(ctx, colName)
 
 	if arango.IsNotFound(err) {
-		col, err = (*a.Db).CreateCollection(ctx, colName, nil)
-	} else if err != nil {
+		col, err = a.DB.CreateCollection(ctx, colName, nil)
+	}
+	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: "db.collection", Err: err}
 	}
 
@@ -65,9 +70,9 @@ func (a *ArangoDb) collection(ctx context.Context, colName string) (arango.Colle
 }
 
 // Query assing result to resObj and returns id as first value
-func (a *ArangoDb) Query(ctx context.Context, query string, bindVars map[string]interface{}, resObj interface{}) (string, error) {
+func (a *ArangoDB) Query(ctx context.Context, query string, bindVars map[string]interface{}, resObj interface{}) (string, error) {
 	const op = "db.Query"
-	cursor, err := (*a.Db).Query(ctx, query, bindVars)
+	cursor, err := a.DB.Query(ctx, query, bindVars)
 
 	//collection not found
 	if arango.IsNotFound(err) {
@@ -76,7 +81,7 @@ func (a *ArangoDb) Query(ctx context.Context, query string, bindVars map[string]
 		// handle error
 		return "", &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	defer cursor.Close()
+	defer CloseCursor(cursor)
 
 	meta, err := cursor.ReadDocument(ctx, &resObj)
 	if arango.IsNoMoreDocuments(err) {
@@ -89,7 +94,7 @@ func (a *ArangoDb) Query(ctx context.Context, query string, bindVars map[string]
 }
 
 // Update document
-func (a *ArangoDb) Update(ctx context.Context, colName string, key string, obj interface{}) error {
+func (a *ArangoDB) Update(ctx context.Context, colName string, key string, obj interface{}) error {
 	const op = "db.Update"
 	col, err := a.collection(ctx, colName)
 	if err != nil {
@@ -105,7 +110,7 @@ func (a *ArangoDb) Update(ctx context.Context, colName string, key string, obj i
 }
 
 // Insert value
-func (a *ArangoDb) Insert(ctx context.Context, colName string, obj interface{}) error {
+func (a *ArangoDB) Insert(ctx context.Context, colName string, obj interface{}) error {
 	const op = "db.Insert"
 	col, err := a.collection(ctx, colName)
 	if err != nil {
@@ -113,8 +118,8 @@ func (a *ArangoDb) Insert(ctx context.Context, colName string, obj interface{}) 
 	}
 
 	_, err = col.CreateDocument(ctx, obj)
-	if arango.IsPreconditionFailed(err) {
-		//Index already exist in the DB
+	if arango.IsPreconditionFailed(err) || arango.IsConflict(err) {
+		//document with the same _key already exist in the DB (412 or 409/1210)
 		return &e.Error{Code: e.ECONFLICT, Op: op, Err: err}
 	} else if err != nil {
 		return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
@@ -124,7 +129,7 @@ func (a *ArangoDb) Insert(ctx context.Context, colName string, obj interface{}) 
 }
 
 // InsertMany - batch insert values
-func (a *ArangoDb) InsertMany(ctx context.Context, colName string, obj interface{}) error {
+func (a *ArangoDB) InsertMany(ctx context.Context, colName string, obj interface{}) error {
 	const op = "db.InsertMany"
 	col, err := a.collection(ctx, colName)
 	if err != nil {
@@ -141,10 +146,10 @@ func (a *ArangoDb) InsertMany(ctx context.Context, colName string, obj interface
 }
 
 // QueryAll return cursor as we do not support generics
-func (a *ArangoDb) QueryAll(ctx context.Context, query string, bindVars map[string]interface{}) (arango.Cursor, error) {
+func (a *ArangoDB) QueryAll(ctx context.Context, query string, bindVars map[string]interface{}) (arango.Cursor, error) {
 	const op = "db.QueryAll"
 
-	cursor, err := (*a.Db).Query(ctx, query, bindVars)
+	cursor, err := a.DB.Query(ctx, query, bindVars)
 	if err != nil {
 		// handle error
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
@@ -154,30 +159,76 @@ func (a *ArangoDb) QueryAll(ctx context.Context, query string, bindVars map[stri
 }
 
 // ClearCollection clear data from the collection
-func (a *ArangoDb) ClearCollection(ctx context.Context, colName string) error {
-	const op = "db.ClearCollection"
-
+func (a *ArangoDB) ClearCollection(ctx context.Context, colName string) error {
 	query := fmt.Sprintf("FOR u IN %s REMOVE u IN %s", colName, colName)
+	return a.DoQuery(ctx, query)
+}
 
-	_, err := (*a.Db).Query(ctx, query, nil)
+// DoQuery can be used to perform any arango query
+func (a *ArangoDB) DoQuery(ctx context.Context, query string) error {
+	return a.DoQueryBuilder(ctx, query, nil)
+}
+
+// DoQueryBuilder runs an arbitrary arango query with bind variables.
+// The cursor is drained so that mutating queries (INSERT/REMOVE/REPLACE) actually execute.
+func (a *ArangoDB) DoQueryBuilder(ctx context.Context, query string, bindVars map[string]interface{}) error {
+	const op = "db.DoQueryBuilder"
+
+	cursor, err := a.DB.Query(ctx, query, bindVars)
 	if err != nil {
 		// handle error
 		return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+	}
+	defer CloseCursor(cursor)
+
+	for {
+		var doc interface{}
+		_, err := cursor.ReadDocument(ctx, &doc)
+		if arango.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+		}
 	}
 
 	return nil
 }
 
-// DoQuery can be used to perform any arango query
-func (a *ArangoDb) DoQuery(ctx context.Context, query string) error {
-
-	const op = "db.DoUpdateQuery"
-
-	_, err := (*a.Db).Query(ctx, query, nil)
-	if err != nil {
-		// handle error
-		return &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+// WithTransaction runs fn atomically against one collection, creating it first if needed.
+// All operations in fn must use the supplied transaction context.
+func (a *ArangoDB) WithTransaction(ctx context.Context, colName string, fn func(context.Context) error) error {
+	const op = "db.WithTransaction"
+	if _, err := a.collection(ctx, colName); err != nil {
+		return &e.Error{Op: op, Err: err}
 	}
-
+	id, err := a.DB.BeginTransaction(ctx, arango.TransactionCollections{Write: []string{colName}}, nil)
+	if err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			// The request context may have expired; rollback still needs a deadline.
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := a.DB.AbortTransaction(cleanupCtx, id, nil); err != nil {
+				log.Printf("abort transaction %s: %v", id, err)
+			}
+		}
+	}()
+	if err := fn(arango.WithTransactionID(ctx, id)); err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	if err := a.DB.CommitTransaction(ctx, id, nil); err != nil {
+		return &e.Error{Op: op, Err: err}
+	}
+	committed = true
 	return nil
+}
+
+// CloseCursor releases a query cursor and reports cleanup failures.
+func CloseCursor(cursor arango.Cursor) {
+	if err := cursor.Close(); err != nil {
+		log.Printf("close database cursor: %v", err)
+	}
 }

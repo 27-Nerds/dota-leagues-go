@@ -4,7 +4,7 @@ package model
 type TeamRoster struct {
 	TeamID      int          `json:"team_id"`
 	TeamMembers []TeamMember `json:"team_members"`
-	DbKey       string       `json:"_key,omitempty"`
+	DBKey       string       `json:"_key,omitempty"`
 }
 
 // TeamMember model part

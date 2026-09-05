@@ -2,28 +2,25 @@ package repository
 
 import (
 	"context"
-	"dota_league/db"
 	e "dota_league/error"
 	"dota_league/model"
-	"strconv"
-	"time"
 )
 
 type LiveGameDetails struct {
-	Conn *db.Interface
+	Conn Database
 }
 
-func NewLiveGameDetailsRepository(Conn *db.Interface) LiveGameDetailsInterface {
+func NewLiveGameDetailsRepository(Conn Database) *LiveGameDetails {
 
 	return &LiveGameDetails{Conn}
 }
 
 func (lgd *LiveGameDetails) Store(l *model.LiveGameDetails) error {
-	l.DbKey = strconv.FormatInt(l.Match.Matchid, 10)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	l.DBKey = l.Match.Matchid
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*lgd.Conn).Insert(ctx, "live_game_details", l)
+	err := lgd.Conn.Insert(ctx, "live_game_details", l)
 	if e.ErrorCode(err) == e.ECONFLICT {
 		return &e.Error{Op: "LiveGameDetailsRepository.Store, record already exists", Err: err}
 	} else if err != nil {
@@ -33,9 +30,9 @@ func (lgd *LiveGameDetails) Store(l *model.LiveGameDetails) error {
 	return nil
 }
 
-func (lgd *LiveGameDetails) ExistsByID(id int64) (bool, error) {
+func (lgd *LiveGameDetails) ExistsByID(id string) (bool, error) {
 
-	exists, err := existsInColByID(lgd.Conn, "live_game_details", strconv.FormatInt(id, 10))
+	exists, err := existsInColByID(lgd.Conn, "live_game_details", id)
 	if err != nil {
 		return false, &e.Error{Op: "LiveGameDetailsRepository.ExistsByID", Err: err}
 	}
@@ -43,12 +40,12 @@ func (lgd *LiveGameDetails) ExistsByID(id int64) (bool, error) {
 	return exists, nil
 }
 
-// Update
+// Update saves changes to stored live game details.
 func (lgd *LiveGameDetails) Update(lgm *model.LiveGameDetails) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*lgd.Conn).Update(ctx, "live_game_details", lgm.DbKey, lgm)
+	err := lgd.Conn.Update(ctx, "live_game_details", lgm.DBKey, lgm)
 	if err != nil {
 		return &e.Error{Op: "LiveGameDetailsRepository.Update", Err: err}
 	}

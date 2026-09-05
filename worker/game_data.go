@@ -20,7 +20,7 @@ func (dl *DataLoader) performGamesUpdate() error {
 		return nil
 	}
 
-	previousGames, err := (*dl.GameRepository).GetAll()
+	previousGames, err := dl.GameRepository.GetAll()
 	if err != nil {
 		log.Printf("performGamesUpdate error: %s", err)
 		return err
@@ -43,7 +43,7 @@ func (dl *DataLoader) performGamesUpdate() error {
 					break
 				}
 			}
-			if found == false {
+			if !found {
 				finishedLeagues[pGame.LeagueID] = true
 			}
 		}
@@ -57,12 +57,12 @@ func (dl *DataLoader) performGamesUpdate() error {
 	}
 
 	for activeLeagueID := range activeLeagues {
-		leagueDetailsExist, err := (*dl.LeagueDetailsRepository).ExistsByID(activeLeagueID)
+		leagueDetailsExist, err := dl.LeagueDetailsRepository.ExistsByID(activeLeagueID)
 		if err != nil {
 			log.Printf("ExistsByID error: %v", err)
 		}
 		if leagueDetailsExist {
-			err = (*dl.LeagueDetailsRepository).UpdateLiveStatus(activeLeagueID, true)
+			err = dl.LeagueDetailsRepository.UpdateLiveStatus(activeLeagueID, true)
 			if err != nil {
 				log.Printf("UpdateLiveStatus error: %v", err)
 			}
@@ -73,19 +73,19 @@ func (dl *DataLoader) performGamesUpdate() error {
 	}
 
 	for finishedLeagueID := range finishedLeagues {
-		err = (*dl.LeagueDetailsRepository).UpdateLiveStatus(finishedLeagueID, false)
+		err = dl.LeagueDetailsRepository.UpdateLiveStatus(finishedLeagueID, false)
 		if err != nil {
 			log.Printf("UpdateLiveStatus error: %v", err)
 		}
 	}
 
-	err = (*dl.GameRepository).RemoveAll()
+	err = dl.GameRepository.RemoveAll()
 	if err != nil {
 		log.Printf("performGamesUpdate error: %s", err)
 		return err
 	}
 
-	err = (*dl.GameRepository).StoreAll(&liveGames.Games)
+	err = dl.GameRepository.StoreAll(&liveGames.Games)
 	if err != nil {
 		log.Printf("performGamesUpdate error: %s", err)
 		return err

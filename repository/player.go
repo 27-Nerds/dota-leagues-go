@@ -2,30 +2,28 @@ package repository
 
 import (
 	"context"
-	"dota_league/db"
 	e "dota_league/error"
 	"dota_league/model"
 	"strconv"
-	"time"
 )
 
 // PlayerRepository repository object
 type PlayerRepository struct {
-	Conn *db.Interface
+	Conn Database
 }
 
 // NewPlayerRepository creates new struct
-func NewPlayerRepository(Conn *db.Interface) PlayerRepositoryInterface {
+func NewPlayerRepository(Conn Database) *PlayerRepository {
 	return &PlayerRepository{Conn}
 }
 
 // Store store player model in db
 func (pr *PlayerRepository) Store(player *model.Player) error {
-	player.DbKey = strconv.Itoa(player.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	player.DBKey = strconv.Itoa(player.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*pr.Conn).Insert(ctx, "players", player)
+	err := pr.Conn.Insert(ctx, "players", player)
 	if e.ErrorCode(err) == e.ECONFLICT {
 		return &e.Error{Op: "PlayerRepository.Store, record already exists", Err: err}
 	} else if err != nil {
@@ -39,14 +37,14 @@ func (pr *PlayerRepository) Store(player *model.Player) error {
 func (pr *PlayerRepository) StoreAll(players *[]model.Player) error {
 	// set db keys for all elements
 	for i, player := range *players {
-		(*players)[i].DbKey = strconv.Itoa(player.ID)
+		(*players)[i].DBKey = strconv.Itoa(player.ID)
 	}
 
 	// is 2 seconds enough?
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*pr.Conn).InsertMany(ctx, "players", *players)
+	err := pr.Conn.InsertMany(ctx, "players", *players)
 	if err != nil {
 		return &e.Error{Op: "PlayerRepository.StoreAll", Err: err}
 	}
@@ -70,9 +68,9 @@ func (pr *PlayerRepository) HasAnyRecord() (bool, error) {
 	query := "RETURN LENGTH(FOR d IN players LIMIT 1 RETURN true) > 0"
 	var exists bool
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	_, err := (*pr.Conn).Query(ctx, query, nil, &exists)
+	_, err := pr.Conn.Query(ctx, query, nil, &exists)
 	if e.IsNotFound(err) {
 		// table not found. no need to crash
 		return false, nil

@@ -2,12 +2,69 @@ package model
 
 // LeagueDetailsData - data from dota league details endpoint
 type LeagueDetailsData struct {
-	Details   LeagueDetails `json:"info"`
-	PrizePool struct {
+	Details     LeagueDetails `json:"info"`
+	SeriesInfos []SeriesInfo  `json:"series_infos"`
+	NodeGroups  []NodeGroup   `json:"node_groups"`
+	PrizePool   struct {
 		BasePrizePool  int `json:"base_prize_pool"`
 		TotalPrizePool int `json:"total_prize_pool"`
 	} `json:"prize_pool"`
 	Streams []Stream `json:"streams"`
+}
+
+// SeriesInfo - single series (matchup slot) from league details endpoint
+type SeriesInfo struct {
+	SeriesID   int      `json:"series_id"`
+	SeriesType int      `json:"series_type"`
+	StartTime  int64    `json:"start_time"`
+	MatchIDs   []string `json:"match_ids"`
+	TeamID1    int      `json:"team_id_1"`
+	TeamID2    int      `json:"team_id_2"`
+}
+
+// NodeGroup - tournament bracket node group from league details endpoint
+type NodeGroup struct {
+	NodeGroupID          int            `json:"node_group_id"`
+	ParentNodeGroupID    int            `json:"parent_node_group_id"`
+	IncomingNodeGroupIDs []int          `json:"incoming_node_group_ids"`
+	AdvancingNodeGroupID int            `json:"advancing_node_group_id"`
+	TeamCount            int            `json:"team_count"`
+	NodeGroupType        int            `json:"node_group_type"`
+	Round                int            `json:"round"`
+	MaxRounds            int            `json:"max_rounds"`
+	Phase                int            `json:"phase"`
+	IsFinalGroup         bool           `json:"is_final_group"`
+	IsCompleted          bool           `json:"is_completed"`
+	TeamStandings        []TeamStanding `json:"team_standings"`
+}
+
+// TeamStanding - team standing inside a node group
+type TeamStanding struct {
+	Standing int    `json:"standing"`
+	TeamID   int    `json:"team_id"`
+	TeamName string `json:"team_name"`
+	TeamTag  string `json:"team_tag"`
+	TeamLogo string `json:"team_logo"`
+	Wins     int    `json:"wins"`
+	Losses   int    `json:"losses"`
+	Score    string `json:"score"`
+	IsPro    bool   `json:"is_pro"`
+}
+
+// LeagueSeries - league series row stored in db, enriched with team names on read
+type LeagueSeries struct {
+	LeagueID   int      `json:"league_id"`
+	SeriesID   int      `json:"series_id"`
+	SeriesType int      `json:"series_type"`
+	StartTime  int64    `json:"start_time"`
+	MatchIDs   []string `json:"match_ids"`
+	TeamID1    int      `json:"team_id_1"`
+	TeamID2    int      `json:"team_id_2"`
+	TeamName1  string   `json:"team_name_1,omitempty"`
+	TeamTag1   string   `json:"team_tag_1,omitempty"`
+	TeamName2  string   `json:"team_name_2,omitempty"`
+	TeamTag2   string   `json:"team_tag_2,omitempty"`
+	DBKey      string   `json:"_key,omitempty"`
 }
 
 // LeagueDetails - details about the league model
@@ -27,7 +84,8 @@ type LeagueDetails struct {
 	BasePrizePool      int      `json:"base_prize_pool"`
 	TotalPrizePool     int      `json:"total_prize_pool"`
 	IsLive             bool     `json:"is_live"`
-	DbKey              string   `json:"_key,omitempty"`
+	UpdatedTimestamp   int64    `json:"updated_timestamp"`
+	DBKey              string   `json:"_key,omitempty"`
 	Streams            []Stream `json:"streams,omitempty"`
 }
 

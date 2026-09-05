@@ -16,5 +16,5 @@ type League struct {
 	StartTimestamp     int64  `json:"start_timestamp"`
 	EndTimestamp       int64  `json:"end_timestamp"`
 	Status             int    `json:"status"`
-	DbKey              string `json:"_key,omitempty"`
+	DBKey              string `json:"_key,omitempty"`
 }

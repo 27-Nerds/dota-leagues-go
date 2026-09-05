@@ -14,21 +14,21 @@ import (
 
 // TeamRosterRepository repository object
 type TeamRosterRepository struct {
-	Conn *db.Interface
+	Conn Database
 }
 
 // NewTeamRosterRepository creates new struct
-func NewTeamRosterRepository(Conn *db.Interface) TeamRosterRepositoryInterface {
+func NewTeamRosterRepository(Conn Database) *TeamRosterRepository {
 	return &TeamRosterRepository{Conn}
 }
 
 // Store store team roster model in db
 func (trr *TeamRosterRepository) Store(teamRoster *model.TeamRoster) error {
-	teamRoster.DbKey = strconv.Itoa(teamRoster.TeamID)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	teamRoster.DBKey = strconv.Itoa(teamRoster.TeamID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*trr.Conn).Insert(ctx, "team_rosters", teamRoster)
+	err := trr.Conn.Insert(ctx, "team_rosters", teamRoster)
 	if e.ErrorCode(err) == e.ECONFLICT {
 		return &e.Error{Op: "TeamRosterRepository.Store, record already exists", Err: err}
 	} else if err != nil {
@@ -46,6 +46,20 @@ func (trr *TeamRosterRepository) ExistsByTeamID(TeamID int) (bool, error) {
 	}
 
 	return exists, nil
+}
+
+// Update updates an existing team roster record (partial merge)
+func (trr *TeamRosterRepository) Update(teamRoster *model.TeamRoster) error {
+	key := strconv.Itoa(teamRoster.TeamID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	err := trr.Conn.Update(ctx, "team_rosters", key, teamRoster)
+	if err != nil {
+		return &e.Error{Op: "TeamRosterRepository.Update", Err: err}
+	}
+
+	return nil
 }
 
 // GetAll returns all teams
@@ -74,9 +88,9 @@ func (trr *TeamRosterRepository) GetByID(id int) (*model.TeamRoster, error) {
 
 	var teamRoster model.TeamRoster
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	_, err := (*trr.Conn).Query(ctx, query, bindVars, &teamRoster)
+	_, err := trr.Conn.Query(ctx, query, bindVars, &teamRoster)
 
 	if err != nil {
 		return nil, &e.Error{Op: "TeamRosterRepository.Get", Err: err}
@@ -92,16 +106,16 @@ func (trr *TeamRosterRepository) queryAll(query string, bindVars map[string]inte
 
 	ct := context.Background()
 	if withTotalCount {
-		ct = driver.WithQueryFullCount(nil, true)
+		ct = driver.WithQueryFullCount(context.Background(), true)
 	}
-	ctx, cancel := context.WithTimeout(ct, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ct, dbTimeout)
 	defer cancel()
-	cursor, err := (*trr.Conn).QueryAll(ctx, query, bindVars)
+	cursor, err := trr.Conn.QueryAll(ctx, query, bindVars)
 	if err != nil {
 		return nil, totalCount, &e.Error{Op: "TeamRosterRepository.GetAllActive", Err: err}
 	}
 
-	defer cursor.Close()
+	defer db.CloseCursor(cursor)
 	var leagues []model.TeamRoster
 
 	for {

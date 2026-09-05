@@ -1,0 +1,9 @@
+services:
+  arangodb:
+    # go-driver in go.mod targets the v3 API; pin to 3.12 (latest of the v3 line)
+    image: arangodb/arangodb:3.12
+    container_name: dota-leagues-arangodb
+    ports:
+      - "127.0.0.1:8529:8529"
+    environment:
+      ARANGO_NO_AUTH: "1"

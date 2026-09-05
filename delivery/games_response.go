@@ -4,6 +4,7 @@ import "dota_league/model"
 
 // GameResponse is used to generate REST response
 type GameResponse struct {
+	GameID     string `json:"game_id"`
 	LeagueID   int    `json:"league_id"`
 	Team1Name  string `json:"team1_name"`
 	Team1ID    int    `json:"team1_id"`
@@ -12,24 +13,25 @@ type GameResponse struct {
 	Spectators int    `json:"spectators"`
 }
 
-func newGameResponse(gameFromDb *model.Game) *GameResponse {
+func newGameResponse(gameFromDB *model.Game) *GameResponse {
 	return &GameResponse{
-		LeagueID:   gameFromDb.LeagueID,
-		Team1Name:  gameFromDb.RadiantName,
-		Team1ID:    gameFromDb.RadiantTeamID,
-		Team2Name:  gameFromDb.DireName,
-		Team2ID:    gameFromDb.DireTeamID,
-		Spectators: gameFromDb.Spectators,
+		GameID:     gameFromDB.ServerSteamID,
+		LeagueID:   gameFromDB.LeagueID,
+		Team1Name:  gameFromDB.RadiantName,
+		Team1ID:    gameFromDB.RadiantTeamID,
+		Team2Name:  gameFromDB.DireName,
+		Team2ID:    gameFromDB.DireTeamID,
+		Spectators: gameFromDB.Spectators,
 	}
 }
 
-func generateGameResponse(gamesFromDb *[]model.Game) *[]*GameResponse {
+func generateGameResponse(gamesFromDB *[]model.Game) *[]*GameResponse {
 
 	gameResponse := []*GameResponse{}
 
 	//convert model.Game to model.GameResponse
-	for _, gameFromDb := range *gamesFromDb {
-		gameResponse = append(gameResponse, newGameResponse(&gameFromDb))
+	for _, gameFromDB := range *gamesFromDB {
+		gameResponse = append(gameResponse, newGameResponse(&gameFromDB))
 	}
 
 	return &gameResponse

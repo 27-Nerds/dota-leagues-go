@@ -13,21 +13,21 @@ import (
 
 // LeagueRepository repository object
 type LeagueRepository struct {
-	Conn *db.Interface
+	Conn Database
 }
 
 // NewLeagueRepository creates new struct
-func NewLeagueRepository(Conn *db.Interface) LeagueRepositoryInterface {
+func NewLeagueRepository(Conn Database) *LeagueRepository {
 	return &LeagueRepository{Conn}
 }
 
 // Store store league model in db
 func (lr *LeagueRepository) Store(l *model.League) error {
-	l.DbKey = strconv.Itoa(l.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	l.DBKey = strconv.Itoa(l.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*lr.Conn).Insert(ctx, "leagues", l)
+	err := lr.Conn.Insert(ctx, "leagues", l)
 	if e.ErrorCode(err) == e.ECONFLICT {
 		return &e.Error{Op: "LeagueRepository.Store, record already exists", Err: err}
 	} else if err != nil {
@@ -41,14 +41,14 @@ func (lr *LeagueRepository) Store(l *model.League) error {
 func (lr *LeagueRepository) StoreAll(leagues *[]model.League) error {
 	// set db keys for all elements
 	for i, league := range *leagues {
-		(*leagues)[i].DbKey = strconv.Itoa(league.ID)
+		(*leagues)[i].DBKey = strconv.Itoa(league.ID)
 	}
 
 	// is 2 seconds enough?
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*lr.Conn).InsertMany(ctx, "leagues", *leagues)
+	err := lr.Conn.InsertMany(ctx, "leagues", *leagues)
 	if err != nil {
 		return &e.Error{Op: "LeagueRepository.StoreAll", Err: err}
 	}
@@ -75,14 +75,14 @@ func (lr *LeagueRepository) GetByDateRange(startDate int64, endDate int64) (*[]m
 		"endDate":   endDate,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	cursor, err := (*lr.Conn).QueryAll(ctx, query, bindVars)
+	cursor, err := lr.Conn.QueryAll(ctx, query, bindVars)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueRepository.GetByDateRange", Err: err}
 	}
 
-	defer cursor.Close()
+	defer db.CloseCursor(cursor)
 	var leagues []model.League
 
 	for {
@@ -119,9 +119,9 @@ func (lr *LeagueRepository) HasAnyRecord() (bool, error) {
 	query := "RETURN LENGTH(FOR d IN leagues LIMIT 1 RETURN true) > 0"
 	var exists bool
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	_, err := (*lr.Conn).Query(ctx, query, nil, &exists)
+	_, err := lr.Conn.Query(ctx, query, nil, &exists)
 	if e.IsNotFound(err) {
 		// table not found. no need to crash
 		return false, nil
@@ -141,14 +141,14 @@ func (lr *LeagueRepository) GetAllActive() (*[]model.LeagueDetails, error) {
 		"today": time.Now().Unix(),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	cursor, err := (*lr.Conn).QueryAll(ctx, query, bindVars)
+	cursor, err := lr.Conn.QueryAll(ctx, query, bindVars)
 	if err != nil {
 		return nil, &e.Error{Op: "LeagueRepository.GetAllActive", Err: err}
 	}
 
-	defer cursor.Close()
+	defer db.CloseCursor(cursor)
 	var leagues []model.LeagueDetails
 
 	for {

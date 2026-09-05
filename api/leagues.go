@@ -16,7 +16,7 @@ func LoadLeagues() (*model.LeagueData, error) {
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	defer body.Close()
+	defer closeResponse(body)
 
 	leagueDataJSON := model.LeagueData{}
 	err = json.NewDecoder(body).Decode(&leagueDataJSON)
@@ -35,7 +35,7 @@ func LoadLeagueDetails(leagueID int) (*model.LeagueDetailsData, error) {
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	defer body.Close()
+	defer closeResponse(body)
 
 	leaguesDetailsJSON := model.LeagueDetailsData{}
 
@@ -62,7 +62,7 @@ func LoadPrizePool(leagueID int) (*PrizePoolResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer closeResponse(body)
 
 	responseData, err := ioutil.ReadAll(body)
 

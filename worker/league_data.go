@@ -34,12 +34,12 @@ func (dl *DataLoader) performPrizePoolUpdate() error {
 	log.Println("refreshing prizepools...")
 
 	// update prizepool only for active tier 4 and 5 leagues
-	leagues, err := (*dl.LeagueDetailsRepository).GetAllActiveForTiers([]int{4, 5})
+	leagues, err := dl.LeagueDetailsRepository.GetAllActiveForTiers([]int{4, 5})
+	if err != nil {
+		return err
+	}
 
 	for _, league := range *leagues {
-
-		time.Sleep(10 * time.Second)
-
 		prizePool, err := api.LoadPrizePool(league.ID)
 		if err != nil {
 			log.Printf("error while performPrizePoolUpdate - LoadPrizePool: %v", err)
@@ -51,7 +51,7 @@ func (dl *DataLoader) performPrizePoolUpdate() error {
 			return nil
 		}
 
-		err = (*dl.LeagueDetailsRepository).UpdateTotalPrizePool(league.ID, prizePool.PrizePool)
+		err = dl.LeagueDetailsRepository.UpdateTotalPrizePool(league.ID, prizePool.PrizePool)
 		if err != nil {
 			log.Printf("error while performPrizePoolUpdate - UpdateTotalPrizePool: %v", err)
 			return err
@@ -73,7 +73,7 @@ func (dl *DataLoader) performLeaguesUpdate() error {
 
 	//TODO: store last processed league id to not
 	//      Get all fresh leagues
-	leagues, err := (*dl.LeagueRepository).GetAllActive()
+	leagues, err := dl.LeagueRepository.GetAllActive()
 	if err != nil {
 		log.Printf("error while storeLeagues: %v", err)
 	} else {
@@ -93,7 +93,7 @@ func (dl *DataLoader) storeLeagues() error {
 		return err
 	}
 
-	hasRecord, err := (*dl.LeagueRepository).HasAnyRecord()
+	hasRecord, err := dl.LeagueRepository.HasAnyRecord()
 	if err != nil {
 		return err
 	}
@@ -101,17 +101,17 @@ func (dl *DataLoader) storeLeagues() error {
 	if hasRecord {
 		for _, league := range leagueData.Leagues {
 			//Store league only if it not exists in the DB
-			b, _ := (*dl.LeagueRepository).ExistsByID(league.ID)
+			b, _ := dl.LeagueRepository.ExistsByID(league.ID)
 
 			if !b {
-				if err = (*dl.LeagueRepository).Store(&league); err != nil {
+				if err = dl.LeagueRepository.Store(&league); err != nil {
 					return err
 				}
 			}
 		}
 
 	} else {
-		err = (*dl.LeagueRepository).StoreAll(&leagueData.Leagues)
+		err = dl.LeagueRepository.StoreAll(&leagueData.Leagues)
 		if err != nil {
 			return err
 		}
@@ -120,46 +120,76 @@ func (dl *DataLoader) storeLeagues() error {
 	return nil
 }
 
-// storeLeagueDetails gets data from api and stores it into DB
-func (dl *DataLoader) storeLeagueDetails(leagueID int, sleepTime time.Duration) error {
-	// do not load data for leagues that are in the db
-	exist, err := (*dl.LeagueDetailsRepository).ExistsByID(leagueID)
-	if exist && err == nil {
-
-		//try to redownload image to existing league if file does not exist
-		err = dl.downloadLeagueImage(leagueID)
-		if err != nil {
-			log.Printf("download image error %s", err)
-		}
-	} else if !exist && err == nil {
-
-		//wait before api request to avoid ban
-		time.Sleep(sleepTime)
-
-		leagueDetails, err := api.LoadLeagueDetails(leagueID)
-		if err != nil {
-			return err
-		}
-
-		// add pricepool info to details struct
-		leagueDetails.Details.BasePrizePool = leagueDetails.PrizePool.BasePrizePool
-		leagueDetails.Details.TotalPrizePool = leagueDetails.PrizePool.TotalPrizePool
-
-		// add stream info
-		leagueDetails.Details.Streams = leagueDetails.Streams
-
-		err = (*dl.LeagueDetailsRepository).Store(&leagueDetails.Details)
-		if err != nil {
-			return err
-		}
-
-		err = dl.downloadLeagueImage(leagueID)
-		if err != nil {
-			log.Printf("download image error %s", err)
-		}
-
-	} else if err != nil {
+// storeLeagueDetails gets data from api and stores it into DB (upsert + series refresh).
+// Records refreshed within detailsRefreshInterval are skipped to spare the Valve API.
+func (dl *DataLoader) storeLeagueDetails(leagueID int) error {
+	exist, err := dl.LeagueDetailsRepository.ExistsByID(leagueID)
+	if err != nil {
 		return err
 	}
+
+	if exist {
+		stored, gerr := dl.LeagueDetailsRepository.GetByID(leagueID)
+		switch {
+		case gerr != nil:
+			log.Printf("storeLeagueDetails: GetByID(%d) error: %s", leagueID, gerr)
+		case time.Since(time.Unix(stored.UpdatedTimestamp, 0)) < detailsRefreshInterval:
+			return nil
+		}
+	}
+
+	leagueDetails, err := api.LoadLeagueDetails(leagueID)
+	if err != nil {
+		return err
+	}
+
+	// add pricepool info to details struct
+	leagueDetails.Details.BasePrizePool = leagueDetails.PrizePool.BasePrizePool
+	leagueDetails.Details.TotalPrizePool = leagueDetails.PrizePool.TotalPrizePool
+
+	// add stream info
+	leagueDetails.Details.Streams = leagueDetails.Streams
+
+	if err := dl.LeagueSeriesRepository.ReplaceAllForLeague(leagueID, leagueDetails.SeriesInfos); err != nil {
+		return err
+	}
+
+	// queue teams referenced by the series but missing from the DB so schedule names can be joined later
+	seen := make(map[int]bool)
+	for _, s := range leagueDetails.SeriesInfos {
+		for _, teamID := range []int{s.TeamID1, s.TeamID2} {
+			if teamID == 0 || seen[teamID] {
+				continue
+			}
+			seen[teamID] = true
+
+			exists, err := dl.TeamRepository.ExistsByID(teamID)
+			if err != nil {
+				// transient DB failure is not a missing team - do not fan out an api request for it
+				log.Printf("storeLeagueDetails: ExistsByID(%d) error: %s", teamID, err)
+				continue
+			}
+
+			if !exists {
+				dl.LoadTeam <- teamID
+			}
+		}
+	}
+
+	leagueDetails.Details.UpdatedTimestamp = time.Now().Unix()
+	if exist {
+		err = dl.LeagueDetailsRepository.Update(&leagueDetails.Details)
+	} else {
+		err = dl.LeagueDetailsRepository.Store(&leagueDetails.Details)
+	}
+	if err != nil {
+		return err
+	}
+
+	err = dl.downloadLeagueImage(leagueID)
+	if err != nil {
+		log.Printf("download image error %s", err)
+	}
+
 	return nil
 }

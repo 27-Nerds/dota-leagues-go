@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 
+	"dota_league/api"
 	"dota_league/db"
 	"dota_league/delivery"
 	"dota_league/handler"
@@ -35,9 +36,21 @@ func GetConfigInt(key string) int {
 	return viper.GetInt(key)
 }
 
+// GetConfigFloat add current env to viper config float query
+func GetConfigFloat(key string) float64 {
+	key = fmt.Sprintf("%s.%s", ENVIRONMENT, key)
+
+	if v, ok := viper.Get(key).(float64); ok {
+		return v
+	}
+
+	return 1.5
+}
+
 func init() {
 	//set default values
 	viper.SetDefault("cors.origin", "*")
+	viper.SetDefault("valve.rps", 1.5)
 
 	//read the cofig file
 	viper.SetConfigFile(`config.json`)
@@ -47,7 +60,7 @@ func init() {
 	}
 }
 
-func dbConnection() db.Interface {
+func dbConnection() *db.ArangoDB {
 	log.Printf("cs: %+v, %+v, %+v, %+v",
 		GetConfigStr(`database.url`),
 		GetConfigStr(`database.user`),
@@ -79,21 +92,26 @@ func main() {
 	log.Printf("Current Environment: %s", ENVIRONMENT)
 
 	db := dbConnection()
-	leagueRepository := repository.NewLeagueRepository(&db)
-	leagueDetailsRepository := repository.NewLeagueDetailsRepository(&db)
-	gameRepository := repository.NewGameRepository(&db)
-	playerRepository := repository.NewPlayerRepository(&db)
-	teamRepository := repository.NewTeamRepository(&db)
-	teamRosterRepository := repository.NewTeamRosterRepository(&db)
-	liveGameDetailsRepository := repository.NewLiveGameDetailsRepository(&db)
+	leagueRepository := repository.NewLeagueRepository(db)
+	leagueDetailsRepository := repository.NewLeagueDetailsRepository(db)
+	gameRepository := repository.NewGameRepository(db)
+	playerRepository := repository.NewPlayerRepository(db)
+	teamRepository := repository.NewTeamRepository(db)
+	teamRosterRepository := repository.NewTeamRosterRepository(db)
+	leagueSeriesRepository := repository.NewLeagueSeriesRepository(db)
+	liveGameDetailsRepository := repository.NewLiveGameDetailsRepository(db)
+
+	api.SetValveRateLimit(GetConfigFloat(`valve.rps`))
+
 	_ = worker.NewDataLoader(
-		&leagueRepository,
-		&leagueDetailsRepository,
-		&gameRepository,
-		&playerRepository,
-		&teamRepository,
-		&teamRosterRepository,
-		&liveGameDetailsRepository,
+		leagueRepository,
+		leagueDetailsRepository,
+		gameRepository,
+		playerRepository,
+		teamRepository,
+		teamRosterRepository,
+		leagueSeriesRepository,
+		liveGameDetailsRepository,
 	)
 
 	//----------------
@@ -121,9 +139,20 @@ func main() {
 	// Routes
 	e.Static("/", "./public")
 
-	leaguesHandler := handler.NewLeaguesHandler(&leagueDetailsRepository)
-	gamesHandler := handler.NewGameHandler(&gameRepository)
-	delivery.NewLeaguesDelivery(e, &leaguesHandler, &gamesHandler)
+	dpcStandingsRepository := repository.NewDPCStandingsRepository(db)
+	dpcResultsRepository := repository.NewDPCResultsRepository(db)
+	matchMinimalRepository := repository.NewMatchMinimalRepository(db)
+
+	leaguesHandler := handler.NewLeaguesHandler(leagueDetailsRepository, leagueSeriesRepository)
+	gamesHandler := handler.NewGameHandler(gameRepository)
+	teamsHandler := handler.NewTeamsHandler(teamRepository)
+	dpcHandler := handler.NewDPCHandler(dpcStandingsRepository, api.LoadDPCStandings)
+	dpcResultsHandler := handler.NewDPCResultsHandler(dpcResultsRepository, api.LoadDPCLeagueResults)
+	matchMinimalHandler := handler.NewMatchMinimalHandler(matchMinimalRepository, api.LoadMatchMinimal)
+
+	delivery.NewLeaguesDelivery(e, leaguesHandler, gamesHandler)
+	delivery.NewTeamsDelivery(e, teamsHandler)
+	delivery.NewDPCDelivery(e, dpcHandler, dpcResultsHandler, matchMinimalHandler)
 
 	// Start server
 	e.Logger.Fatal(e.Start(GetConfigStr(`server.address`)))

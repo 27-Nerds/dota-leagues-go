@@ -18,21 +18,21 @@ type LeagueDetailsFullResponse struct {
 	IsLive             bool   `json:"is_live"`
 }
 
-func newLeagueDetailsFullResponse(leagueFromDb *model.LeagueDetails) *LeagueDetailsFullResponse {
+func newLeagueDetailsFullResponse(leagueFromDB *model.LeagueDetails) *LeagueDetailsFullResponse {
 	return &LeagueDetailsFullResponse{
-		ID:                 leagueFromDb.ID,
-		Name:               leagueFromDb.Name,
-		Tier:               leagueFromDb.Tier,
-		Region:             leagueFromDb.Region,
-		URL:                leagueFromDb.URL,
-		Description:        leagueFromDb.Description,
-		StartTimestamp:     leagueFromDb.StartTimestamp,
-		EndTimestamp:       leagueFromDb.EndTimestamp,
-		RegistrationPeriod: leagueFromDb.RegistrationPeriod,
-		ProCircuitPoints:   leagueFromDb.ProCircuitPoints,
-		Status:             leagueFromDb.Status,
-		TotalPrizePool:     leagueFromDb.TotalPrizePool,
-		IsLive:             leagueFromDb.IsLive,
+		ID:                 leagueFromDB.ID,
+		Name:               leagueFromDB.Name,
+		Tier:               leagueFromDB.Tier,
+		Region:             leagueFromDB.Region,
+		URL:                leagueFromDB.URL,
+		Description:        leagueFromDB.Description,
+		StartTimestamp:     leagueFromDB.StartTimestamp,
+		EndTimestamp:       leagueFromDB.EndTimestamp,
+		RegistrationPeriod: leagueFromDB.RegistrationPeriod,
+		ProCircuitPoints:   leagueFromDB.ProCircuitPoints,
+		Status:             leagueFromDB.Status,
+		TotalPrizePool:     leagueFromDB.TotalPrizePool,
+		IsLive:             leagueFromDB.IsLive,
 	}
 }
 

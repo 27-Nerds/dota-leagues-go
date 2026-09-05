@@ -1,17 +1,9 @@
 ## Development
 
-install arangodb. follow this [guide](https://www.arangodb.com/docs/stable/getting-started-installation.html)
-
-Create new db:
+start ArangoDB with docker (no manual install needed):
 
 ```bash
-arangosh
-```
-
-in arango shell:
-
-```bash
-> db._createDatabase("dota_leagues", {}, [{username: "login", passwd: "pass", active: true}])
+docker compose up -d
 ```
 
 create config file `config.json` (you can edit it to set arangodb credentials), or just copy an example
@@ -20,13 +12,17 @@ create config file `config.json` (you can edit it to set arangodb credentials), 
 cp config.json.example config.json
 ```
 
+auth is disabled on the test instance, so any credentials work — the example values (`login`/`pass`) are fine as-is. the database itself is created automatically on first run.
+
 run project
 
 ```bash
-go run dota_league
+go run .
 ```
 
 navigate to http://localhost:1323
+
+stop the db when you are done: `docker compose down`
 
 ------
 

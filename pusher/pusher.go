@@ -1,3 +1,4 @@
+// Package pusher sends serialized data to HTTP endpoints.
 package pusher
 
 import (
@@ -10,11 +11,6 @@ import (
 type Pusher struct {
 }
 
-func newPusher() *Pusher {
-
-	return &Pusher{}
-}
-
 // SendTo - send given data to the given url
 func (p *Pusher) SendTo(url string, data *interface{}) error {
 
@@ -24,6 +20,9 @@ func (p *Pusher) SendTo(url string, data *interface{}) error {
 	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(byteData))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -31,7 +30,11 @@ func (p *Pusher) SendTo(url string, data *interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("close push response: %v", err)
+		}
+	}()
 
 	log.Println("response Status:", resp.Status)
 	return nil

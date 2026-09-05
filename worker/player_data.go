@@ -4,7 +4,6 @@ import (
 	"dota_league/api"
 	"dota_league/model"
 	"log"
-	"time"
 )
 
 func (dl *DataLoader) performPlayersUpdate() error {
@@ -14,12 +13,14 @@ func (dl *DataLoader) performPlayersUpdate() error {
 		return err
 	}
 	log.Println("players info updated.")
+	seen := make(map[int]bool)
 	for _, player := range *players {
 		// skip players with team id = 0
-		if player.TeamID == 0 {
+		if player.TeamID == 0 || seen[player.TeamID] {
 			continue
 		}
 
+		seen[player.TeamID] = true
 		dl.LoadTeam <- player.TeamID
 	}
 
@@ -33,7 +34,7 @@ func (dl *DataLoader) storePlayers() (*[]model.Player, error) {
 		return nil, err
 	}
 
-	hasRecord, err := (*dl.PlayerRepository).HasAnyRecord()
+	hasRecord, err := dl.PlayerRepository.HasAnyRecord()
 	if err != nil {
 		return nil, err
 	}
@@ -43,17 +44,17 @@ func (dl *DataLoader) storePlayers() (*[]model.Player, error) {
 			//TODO: we need to update values sometimes
 
 			//Store player only if it not exists in the DB
-			b, _ := (*dl.PlayerRepository).ExistsByID(player.ID)
+			b, _ := dl.PlayerRepository.ExistsByID(player.ID)
 
 			if !b {
-				if err = (*dl.PlayerRepository).Store(&player); err != nil {
+				if err = dl.PlayerRepository.Store(&player); err != nil {
 					return nil, err
 				}
 			}
 		}
 
 	} else {
-		err = (*dl.PlayerRepository).StoreAll(&playersData.Players)
+		err = dl.PlayerRepository.StoreAll(&playersData.Players)
 		if err != nil {
 			return nil, err
 		}
@@ -62,15 +63,13 @@ func (dl *DataLoader) storePlayers() (*[]model.Player, error) {
 	return &playersData.Players, nil
 }
 
-func (dl *DataLoader) storeSinglePlayer(playerID int, sleepTime time.Duration) error {
-	time.Sleep(sleepTime)
-
+func (dl *DataLoader) storeSinglePlayer(playerID int) error {
 	player, err := api.LoadSinglePlayer(playerID)
 	if err != nil {
 		return err
 	}
 
-	err = (*dl.PlayerRepository).Store(player)
+	err = dl.PlayerRepository.Store(player)
 	if err != nil {
 		return err
 	}

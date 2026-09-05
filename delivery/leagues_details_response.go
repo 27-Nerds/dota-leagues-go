@@ -17,20 +17,20 @@ type LeagueDetailsResponse struct {
 	IsLive         bool   `json:"is_live"`
 }
 
-//convert model.Game to model.GameResponse
-func newLeagueDetailsResponse(leagueFromDb *model.LeagueDetails) *LeagueDetailsResponse {
+// convert model.Game to model.GameResponse
+func newLeagueDetailsResponse(leagueFromDB *model.LeagueDetails) *LeagueDetailsResponse {
 	return &LeagueDetailsResponse{
-		ID:             leagueFromDb.ID,
-		Name:           leagueFromDb.Name,
-		Tier:           leagueFromDb.Tier,
-		Region:         leagueFromDb.Region,
-		URL:            leagueFromDb.URL,
-		Description:    leagueFromDb.Description,
-		StartTimestamp: leagueFromDb.StartTimestamp,
-		EndTimestamp:   leagueFromDb.EndTimestamp,
-		Status:         leagueFromDb.Status,
-		TotalPrizePool: leagueFromDb.TotalPrizePool,
-		IsLive:         leagueFromDb.IsLive,
+		ID:             leagueFromDB.ID,
+		Name:           leagueFromDB.Name,
+		Tier:           leagueFromDB.Tier,
+		Region:         leagueFromDB.Region,
+		URL:            leagueFromDB.URL,
+		Description:    leagueFromDB.Description,
+		StartTimestamp: leagueFromDB.StartTimestamp,
+		EndTimestamp:   leagueFromDB.EndTimestamp,
+		Status:         leagueFromDB.Status,
+		TotalPrizePool: leagueFromDB.TotalPrizePool,
+		IsLive:         leagueFromDB.IsLive,
 	}
 }
 

@@ -2,17 +2,17 @@ package model
 
 // LiveGameDetails struct
 type LiveGameDetails struct {
-	DbKey string `json:"_key,omitempty"`
+	DBKey string `json:"_key,omitempty"`
 
 	Match struct {
-		ServerSteamID int64 `json:"server_steam_id"`
-		Matchid       int64 `json:"matchid"`
-		Timestamp     int   `json:"timestamp"`
-		GameTime      int   `json:"game_time"`
-		GameMode      int   `json:"game_mode"`
-		LeagueID      int   `json:"league_id"`
-		LeagueNodeID  int   `json:"league_node_id"`
-		GameState     int   `json:"game_state"`
+		ServerSteamID string `json:"server_steam_id"`
+		Matchid       string `json:"match_id"`
+		Timestamp     int    `json:"timestamp"`
+		GameTime      int    `json:"game_time"`
+		GameMode      int    `json:"game_mode"`
+		LeagueID      int    `json:"league_id"`
+		LeagueNodeID  int    `json:"league_node_id"`
+		GameState     int    `json:"game_state"`
 	} `json:"match"`
 	Teams []struct {
 		TeamNumber  int    `json:"team_number"`

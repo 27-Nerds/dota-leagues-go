@@ -3,9 +3,7 @@ package worker
 import (
 	"dota_league/api"
 	"dota_league/model"
-	"dota_league/repository"
 	"log"
-	"strconv"
 	"time"
 )
 
@@ -13,19 +11,19 @@ const (
 	timeout = 200 * time.Second
 )
 
-//LiveGamesManager manages structs for every live game
+// LiveGamesManager manages structs for every live game
 type LiveGamesManager struct {
-	liveGames                 map[int64]*LiveGame
-	liveGameDetailsRepository *repository.LiveGameDetailsInterface
-	gameEndedChannel          chan int64
+	liveGames                 map[string]*LiveGame
+	liveGameDetailsRepository LiveGameDetailsRepository
+	gameEndedChannel          chan string
 }
 
-func NewLiveGamesManager(liveGameDetailsRepository *repository.LiveGameDetailsInterface) *LiveGamesManager {
+func NewLiveGamesManager(liveGameDetailsRepository LiveGameDetailsRepository) *LiveGamesManager {
 	log.Println("Live Game Manager started")
 	lgm := &LiveGamesManager{
-		liveGames:                 make(map[int64]*LiveGame),
+		liveGames:                 make(map[string]*LiveGame),
 		liveGameDetailsRepository: liveGameDetailsRepository,
-		gameEndedChannel:          make(chan int64),
+		gameEndedChannel:          make(chan string),
 	}
 	go lgm.updateGames()
 	go lgm.gameEndedListener()
@@ -46,7 +44,7 @@ func (lgm *LiveGamesManager) updateGames() {
 		for serverSteamID, liveGame := range lgm.liveGames {
 			liveGameDetails, err := api.GetLiveGameStats(serverSteamID)
 			if err != nil {
-				log.Printf("updateLiveGameData error for %d. %v", serverSteamID, err)
+				log.Printf("updateLiveGameData error for %s. %v", serverSteamID, err)
 			} else {
 				liveGame.NewDataChan <- liveGameDetails
 
@@ -60,26 +58,22 @@ func (lgm *LiveGamesManager) updateGames() {
 }
 
 func (lgm *LiveGamesManager) gameEndedListener() {
-	for {
-		select {
-		case gameID := <-lgm.gameEndedChannel:
-			// delete game from the games map
-			delete(lgm.liveGames, gameID)
-		}
+	for gameID := range lgm.gameEndedChannel {
+		delete(lgm.liveGames, gameID)
 	}
 }
 
-//LiveGame struct
+// LiveGame struct
 type LiveGame struct {
 	game                      model.Game
-	liveGameDetailsRepository *repository.LiveGameDetailsInterface
+	liveGameDetailsRepository LiveGameDetailsRepository
 	timeoutTicker             *time.Ticker
-	gameEndedChannel          chan int64
+	gameEndedChannel          chan string
 	NewDataChan               chan *model.LiveGameDetails
 }
 
-//NewLiveGame create new live game for given id
-func NewLiveGame(game model.Game, liveGameDetailsRepository *repository.LiveGameDetailsInterface, gameEndedChannel chan int64) *LiveGame {
+// NewLiveGame create new live game for given id
+func NewLiveGame(game model.Game, liveGameDetailsRepository LiveGameDetailsRepository, gameEndedChannel chan string) *LiveGame {
 	log.Println("Adding new live game:", game.ServerSteamID)
 
 	liveGame := &LiveGame{
@@ -121,24 +115,24 @@ func (lg *LiveGame) stopGame() {
 
 func (lg *LiveGame) update(lgd *model.LiveGameDetails) error {
 
-	lgd.DbKey = strconv.FormatInt(lgd.Match.Matchid, 10)
-	exist, err := (*lg.liveGameDetailsRepository).ExistsByID(lgd.Match.Matchid)
+	lgd.DBKey = lgd.Match.Matchid
+	exist, err := lg.liveGameDetailsRepository.ExistsByID(lgd.Match.Matchid)
 	if err != nil {
-		log.Printf("updateLiveGameData ExistsByID error for %d. %v", lg.game.ServerSteamID, err)
+		log.Printf("updateLiveGameData ExistsByID error for %s. %v", lg.game.ServerSteamID, err)
 
 		return err
 	}
-	if exist != true {
-		err = (*lg.liveGameDetailsRepository).Store(lgd)
+	if !exist {
+		err = lg.liveGameDetailsRepository.Store(lgd)
 		if err != nil {
-			log.Printf("updateLiveGameData store error for %d. %v", lg.game.ServerSteamID, err)
+			log.Printf("updateLiveGameData store error for %s. %v", lg.game.ServerSteamID, err)
 
 			return err
 		}
 	} else {
-		err = (*lg.liveGameDetailsRepository).Update(lgd)
+		err = lg.liveGameDetailsRepository.Update(lgd)
 		if err != nil {
-			log.Printf("updateLiveGameData store error for %d. %v", lg.game.ServerSteamID, err)
+			log.Printf("updateLiveGameData store error for %s. %v", lg.game.ServerSteamID, err)
 
 			return err
 		}

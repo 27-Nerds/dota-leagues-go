@@ -15,12 +15,12 @@ import (
 
 // LeagueDetailsRepository repository struct
 type LeagueDetailsRepository struct {
-	Conn           *db.Interface
+	Conn           Database
 	activityFilter string
 }
 
 // NewLeagueDetailsRepository creates new struct
-func NewLeagueDetailsRepository(conn *db.Interface) LeagueDetailsRepositoryInterface {
+func NewLeagueDetailsRepository(conn Database) *LeagueDetailsRepository {
 	return &LeagueDetailsRepository{
 		Conn:           conn,
 		activityFilter: "FILTER (d.end_timestamp >= @today && d.status != 5) || d.is_live == true SORT d.tier DESC, d.is_live DESC, ABS(d.start_timestamp - @today), d.total_prize_pool DESC",
@@ -29,15 +29,29 @@ func NewLeagueDetailsRepository(conn *db.Interface) LeagueDetailsRepositoryInter
 
 // Store store leagueDetails model in db
 func (ldr *LeagueDetailsRepository) Store(ld *model.LeagueDetails) error {
-	ld.DbKey = strconv.Itoa(ld.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ld.DBKey = strconv.Itoa(ld.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*ldr.Conn).Insert(ctx, "league_details", ld)
+	err := ldr.Conn.Insert(ctx, "league_details", ld)
 	if e.ErrorCode(err) == e.ECONFLICT {
 		return &e.Error{Op: "LeagueDetailsRepository.Store, record already exists", Err: err}
 	} else if err != nil {
 		return &e.Error{Op: "LeagueDetailsRepository.Store", Err: err}
+	}
+
+	return nil
+}
+
+// Update updates an existing league details record (partial merge)
+func (ldr *LeagueDetailsRepository) Update(ld *model.LeagueDetails) error {
+	ld.DBKey = strconv.Itoa(ld.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	err := ldr.Conn.Update(ctx, "league_details", ld.DBKey, ld)
+	if err != nil {
+		return &e.Error{Op: "LeagueDetailsRepository.Update", Err: err}
 	}
 
 	return nil
@@ -93,10 +107,10 @@ func (ldr *LeagueDetailsRepository) UpdateLiveStatus(key int, newStatus bool) er
 		"is_live": newStatus,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*ldr.Conn).Update(ctx, "league_details", strconv.Itoa(key), patch)
+	err := ldr.Conn.Update(ctx, "league_details", strconv.Itoa(key), patch)
 	if err != nil {
 		return &e.Error{Op: "LeagueDetailsRepository.UpdateLiveStatus", Err: err}
 	}
@@ -109,10 +123,10 @@ func (ldr *LeagueDetailsRepository) UpdateTotalPrizePool(key int, prizePool int)
 	patch := map[string]interface{}{
 		"total_prize_pool": prizePool,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	err := (*ldr.Conn).Update(ctx, "league_details", strconv.Itoa(key), patch)
+	err := ldr.Conn.Update(ctx, "league_details", strconv.Itoa(key), patch)
 	if err != nil {
 		return &e.Error{Op: "LeagueDetailsRepository.UpdateTotalPrizePool", Err: err}
 	}
@@ -122,10 +136,10 @@ func (ldr *LeagueDetailsRepository) UpdateTotalPrizePool(key int, prizePool int)
 
 // SetAllAsNotLive set all leagues as inactive
 func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 	query := "FOR u IN league_details UPDATE u WITH { u.is_live: false } IN league_details"
-	err := (*ldr.Conn).DoQuery(ctx, query)
+	err := ldr.Conn.DoQuery(ctx, query)
 	if err != nil {
 		return &e.Error{Op: "LeagueDetailsRepository.SetAllAsNotLive", Err: err}
 	}
@@ -133,8 +147,8 @@ func (ldr *LeagueDetailsRepository) SetAllAsNotLive() error {
 	return nil
 }
 
-// GetById get league
-func (lr *LeagueDetailsRepository) GetById(id int) (*model.LeagueDetails, error) {
+// GetByID get league
+func (ldr *LeagueDetailsRepository) GetByID(id int) (*model.LeagueDetails, error) {
 	query := "FOR d IN league_details FILTER d._key == @id RETURN d"
 	bindVars := map[string]interface{}{
 		"id": strconv.Itoa(id),
@@ -142,9 +156,9 @@ func (lr *LeagueDetailsRepository) GetById(id int) (*model.LeagueDetails, error)
 
 	var league model.LeagueDetails
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	_, err := (*lr.Conn).Query(ctx, query, bindVars, &league)
+	_, err := ldr.Conn.Query(ctx, query, bindVars, &league)
 
 	log.Printf("%+v", league)
 	if err != nil {
@@ -161,16 +175,16 @@ func (ldr *LeagueDetailsRepository) queryAll(query string, bindVars map[string]i
 
 	ct := context.Background()
 	if withTotalCount {
-		ct = driver.WithQueryFullCount(nil, true)
+		ct = driver.WithQueryFullCount(context.Background(), true)
 	}
-	ctx, cancel := context.WithTimeout(ct, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ct, dbTimeout)
 	defer cancel()
-	cursor, err := (*ldr.Conn).QueryAll(ctx, query, bindVars)
+	cursor, err := ldr.Conn.QueryAll(ctx, query, bindVars)
 	if err != nil {
 		return nil, totalCount, &e.Error{Op: "LeagueDetailsRepository.GetAllActive", Err: err}
 	}
 
-	defer cursor.Close()
+	defer db.CloseCursor(cursor)
 	var leagues []model.LeagueDetails
 
 	for {

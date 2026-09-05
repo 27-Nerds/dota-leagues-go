@@ -14,7 +14,7 @@ func LoadPlayers() (*model.PlayersData, error) {
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	defer body.Close()
+	defer closeResponse(body)
 
 	playersDataJSON := model.PlayersData{}
 	err = json.NewDecoder(body).Decode(&playersDataJSON)
@@ -34,7 +34,7 @@ func LoadSinglePlayer(playerID int) (*model.Player, error) {
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
-	defer body.Close()
+	defer closeResponse(body)
 
 	playerJSON := model.Player{}
 
@@ -42,6 +42,12 @@ func LoadSinglePlayer(playerID int) (*model.Player, error) {
 
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
+	}
+
+	// valve answers with an empty object (200 ok) when the account has no dpc profile;
+	// storing it would create a zero-valued player keyed by "0"
+	if playerJSON.ID == 0 {
+		return nil, &e.Error{Code: e.ENOTFOUND, Op: op, Message: fmt.Sprintf("no dpc profile for account_id %d", playerID)}
 	}
 
 	return &playerJSON, nil

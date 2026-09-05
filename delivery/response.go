@@ -17,12 +17,12 @@ type meta struct {
 	Total  int64 `json:"total"`
 }
 
-func newMeta(c *echo.Context) *meta {
-	offset, err := strconv.Atoi((*c).QueryParam("offset"))
+func newMeta(c echo.Context) *meta {
+	offset, err := strconv.Atoi(c.QueryParam("offset"))
 	if err != nil || offset < 0 {
 		offset = 0
 	}
-	limit, err := strconv.Atoi((*c).QueryParam("limit"))
+	limit, err := strconv.Atoi(c.QueryParam("limit"))
 	if err != nil || limit < 0 {
 		limit = 10
 	}
