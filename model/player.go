@@ -14,6 +14,22 @@ type PlayerResult struct {
 	LeagueAvailable bool   `json:"league_available,omitempty"`
 }
 
+// ProRegistration is one entry of Valve's professional registration history.
+type ProRegistration struct {
+	RegistrationPeriod int `json:"registration_period"`
+	Timestamp          int `json:"timestamp"`
+}
+
+// PlayerTeamEntry is one team membership from Valve's per-player audit log.
+type PlayerTeamEntry struct {
+	StartTimestamp int    `json:"start_timestamp"`
+	TeamID         int    `json:"team_id"`
+	TeamName       string `json:"team_name,omitempty"`
+	TeamTag        string `json:"team_tag,omitempty"`
+	TeamURLLogo    string `json:"team_url_logo,omitempty"`
+	TeamAvailable  bool   `json:"team_available,omitempty"`
+}
+
 // PlayerRosterTeam is the team whose Valve roster currently lists the player. It can
 // differ from the DPC feed's team_id, which lags or reports no team for some players.
 type PlayerRosterTeam struct {
@@ -49,13 +65,18 @@ type Player struct {
 	TeamTag          string            `json:"team_tag,omitempty"`
 	TeamAvailable    bool              `json:"team_available,omitempty"`
 	RosterTeam       *PlayerRosterTeam `json:"roster_team,omitempty"`
-	Sponsor          string            `json:"sponsor"`
-	IsLocked         bool              `json:"is_locked"`
-	IsPro            bool              `json:"is_pro"`
-	RealName         string            `json:"real_name,omitempty"`
-	Birthdate        int               `json:"birthdate,omitempty"`
-	TotalEarnings    int               `json:"total_earnings"`
-	Results          []PlayerResult    `json:"results,omitempty"`
-	TeamURLLogo      string            `json:"team_url_logo,omitempty"`
-	DBKey            string            `json:"_key,omitempty"`
+	// DPCSeenAt is the last sync in which Valve's pro player feed listed this account.
+	DPCSeenAt int64 `json:"dpc_seen_at,omitempty"`
+	// ProRegistration and TeamHistory come from the pro player feed; IsPro is no longer sent by Valve.
+	ProRegistration []ProRegistration `json:"pro_registration,omitempty"`
+	TeamHistory     []PlayerTeamEntry `json:"audit_entries,omitempty"`
+	Sponsor         string            `json:"sponsor"`
+	IsLocked        bool              `json:"is_locked"`
+	IsPro           bool              `json:"is_pro"`
+	RealName        string            `json:"real_name,omitempty"`
+	Birthdate       int               `json:"birthdate,omitempty"`
+	TotalEarnings   int               `json:"total_earnings"`
+	Results         []PlayerResult    `json:"results,omitempty"`
+	TeamURLLogo     string            `json:"team_url_logo,omitempty"`
+	DBKey           string            `json:"_key,omitempty"`
 }

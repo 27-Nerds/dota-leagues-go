@@ -4,6 +4,7 @@ export function parsePath(pathname) {
   if (pathname === '/') return { name: 'home' };
   if (pathname === '/activity') return { name: 'updates' };
   if (pathname === '/team') return { name: 'teams' };
+  if (pathname === '/player') return { name: 'players' };
   if (pathname === '/dpc') return { name: 'dpc' };
   const parts = pathname.split('/').slice(1);
   if (parts.length === 2 && id.test(parts[1])) {

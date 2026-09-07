@@ -54,7 +54,9 @@ func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) 
 	if err != nil {
 		return nil, err
 	}
+	seenAt := time.Now().UnixMilli()
 	for _, player := range playersData.Players {
+		player.DPCSeenAt = seenAt
 		created, err := dl.PlayerRepository.SaveProfile(ctx, &player)
 		if err != nil {
 			return nil, err

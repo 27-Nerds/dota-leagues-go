@@ -144,10 +144,23 @@ func TestSteamProfileUpgrade(t *testing.T) {
 	if err != nil || len(ids) != 1 || ids[0] != 42 {
 		t.Fatalf("sitemap players: %v %v", ids, err)
 	}
-	if _, err := repo.SaveProfile(t.Context(), &model.Player{ID: 44, Name: "Amateur"}); err != nil {
+	if _, err := repo.SaveProfile(t.Context(), &model.Player{ID: 44, Name: "Steam only", ProfileSource: "steam"}); err != nil {
 		t.Fatal(err)
 	}
 	if ids, total, err := repo.GetSitemapPlayers(t.Context(), 0, 10); err != nil || total != 1 || len(ids) != 1 {
-		t.Fatalf("non-pro player listed in sitemap: %v %d %v", ids, total, err)
+		t.Fatalf("steam-only player listed in sitemap: %v %d %v", ids, total, err)
+	}
+	listed := true
+	rows, total, err := repo.GetAll(t.Context(), 0, 10, model.PlayerFilter{Pro: &listed})
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != 42 || rows[0].TeamName != "New Team" {
+		t.Fatalf("pro directory: %+v %d %v", rows, total, err)
+	}
+	rows, total, err = repo.GetAll(t.Context(), 0, 10, model.PlayerFilter{Search: "44"})
+	if err != nil || total != 1 || rows[0].ID != 44 {
+		t.Fatalf("account search: %+v %d %v", rows, total, err)
+	}
+	rows, _, err = repo.GetAll(t.Context(), 0, 10, model.PlayerFilter{})
+	if err != nil || len(rows) != 2 || rows[0].ID != 42 {
+		t.Fatalf("listed pros should rank first: %+v %v", rows, err)
 	}
 }

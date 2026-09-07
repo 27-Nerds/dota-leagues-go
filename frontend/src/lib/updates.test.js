@@ -94,6 +94,8 @@ test('player changes describe team moves, privacy flips, and identity updates', 
   assert.equal(title([{field:'team_id',before:0,after:7},{field:'team',before:'',after:'Team A'}]), 'Player joined team');
   assert.equal(title([{field:'team_id',before:7,after:0},{field:'team',before:'Team A',after:''}]), 'Player left team');
   assert.equal(title([{field:'team_id',before:7,after:8},{field:'team',before:'Team A',after:'Team B'}]), 'Player transferred');
+  assert.equal(title([{field:'roster_team',before:'',after:'LGD'},{field:'roster_team_id',before:0,after:5}]), 'Joined roster');
+  assert.equal(title([{field:'roster_team',before:'LGD',after:''},{field:'roster_team_id',before:5,after:0}]), 'Left roster');
   assert.equal(title([{field:'steam_profile',before:'public',after:'private'}]), 'Steam profile private');
   assert.equal(title([{field:'steam_profile',before:'private',after:'public'}]), 'Steam profile public');
   assert.equal(title([{field:'steam_profile',before:'public',after:'unavailable'}]), 'Steam profile unavailable');
@@ -106,6 +108,7 @@ test('player changes describe team moves, privacy flips, and identity updates', 
   assert.equal(updateValue('fantasy_role', 2), 'Support');
   assert.equal(updateValue('total_earnings', 1500), '$1,500');
   assert.equal(parsePath('/player/42').name, 'player');
+  assert.equal(parsePath('/player').name, 'players');
   assert.equal(parsePath('/player/0').name, 'notFound');
 });
 test('steam state keeps last public data visible after a profile goes private', async () => {
@@ -116,6 +119,15 @@ test('steam state keeps last public data visible after a profile goes private', 
   assert.deepEqual(steamState({steam_name:'n',steam_status:'unavailable'}), {kind:'unavailable',label:'Unavailable',hasData:true});
   assert.deepEqual(steamState({steam_status:'request_failed'}), {kind:'unknown',label:'Check failed',hasData:false});
   assert.equal(playerDisplayName({name:' ',steam_name:'Steam'}, 3), 'Steam');
+  const { isListedPro, proRegistration, teamHistory } = await import('./players.js');
+  assert.equal(isListedPro({profile_source:''}), true);
+  assert.equal(isListedPro({profile_source:'steam'}), false);
+  assert.equal(isListedPro(null), false);
+  assert.deepEqual(proRegistration({pro_registration:[{registration_period:10,timestamp:1},{registration_period:11,timestamp:5}]}), {registration_period:11,timestamp:5});
+  assert.equal(proRegistration({}), null);
+  const { proRegistrations } = await import('./players.js');
+  assert.deepEqual(proRegistrations({pro_registration:[{registration_period:10,timestamp:1},{registration_period:9,timestamp:0},{registration_period:11,timestamp:5}]}).map(r=>r.registration_period), [11,10]);
+  assert.deepEqual(teamHistory({audit_entries:[{team_id:1,start_timestamp:1},{team_id:0,start_timestamp:9},{team_id:2,start_timestamp:3}]}).map(h=>h.team_id), [2,1]);
   assert.equal(playerDisplayName(null, 3), 'Player #3');
 });
 test('related field changes receive meaningful titles', () => {

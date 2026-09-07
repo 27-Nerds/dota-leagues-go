@@ -8,7 +8,8 @@ const labels = {
   start_timestamp: 'Starts (UTC)', end_timestamp: 'Ends (UTC)', status: 'Status',
   total_prize_pool: 'Prize pool', description: 'Description', members: 'Roster members', admins: 'Administrators',
   real_name: 'Real name', team: 'Team', team_id: 'Team ID', fantasy_role: 'Role', is_pro: 'Professional', sponsor: 'Sponsor',
-  total_earnings: 'Earnings', steam_name: 'Steam name', steam_location: 'Steam location', steam_profile: 'Steam profile'
+  total_earnings: 'Earnings', steam_name: 'Steam name', steam_location: 'Steam location', steam_profile: 'Steam profile',
+  roster_team: 'Roster', roster_team_id: 'Roster team ID'
 };
 const steamProfileLabels = { public: 'Public', private: 'Private', friendsonly: 'Friends only', unavailable: 'Unavailable' };
 export function fieldLabel(field) { return labels[field] || String(field || 'Details').replaceAll('_', ' '); }
@@ -76,6 +77,8 @@ export function playerChangeTitle(changes) {
     if (after) return 'Player joined team';
     if (before) return 'Player left team';
   }
+  const roster = changes.find(c => c.field === 'roster_team_id');
+  if (roster) return Number(roster.after) > 0 ? 'Joined roster' : 'Left roster';
   const steam = changes.find(c => c.field === 'steam_profile');
   if (steam) {
     if (steam.after === 'public') return 'Steam profile public';
@@ -120,6 +123,7 @@ export function updatePresentation(update) {
     'Tournament concluded': ['flag', 'neutral'], 'Tournament approved': ['circle-check', 'positive'],
     'Tournament rejected': ['circle-x', 'departure'], 'Tournament deleted': ['circle-x', 'departure'],
     'Tournament status changed': ['trophy', 'change'],
+    'Joined roster': ['user-plus', 'positive'], 'Left roster': ['user-minus', 'departure'],
     'Player joined team': ['user-plus', 'positive'], 'Player left team': ['user-minus', 'departure'], 'Player transferred': ['swap', 'change'],
     'Player renamed': ['identity', 'change'], 'Earnings updated': ['coins', 'financial'], 'Steam profile private': ['lock', 'caution'],
     'Steam profile public': ['unlock', 'positive'], 'Steam profile unavailable': ['lock', 'caution'], 'Steam profile updated': ['user-round', 'neutral'],
@@ -165,7 +169,7 @@ export function updateSummary(update) {
     }
     return [...counts].map(([label, count]) => `${count} ${label}`).join(' · ') || 'Roster updated';
   }
-  if (changes.length <= 2 && changes.every(c => ['total_prize_pool', 'wins', 'losses', 'status', 'total_earnings', 'steam_profile', 'team'].includes(c.field))) {
+  if (changes.length <= 2 && changes.every(c => ['total_prize_pool', 'wins', 'losses', 'status', 'total_earnings', 'steam_profile', 'team', 'roster_team'].includes(c.field))) {
     return changes.map(c => `${fieldLabel(c.field)}: ${updateValue(c.field, c.before)} → ${updateValue(c.field, c.after)}`).join(' · ');
   }
   const fields = changes.slice(0, 2).map(c => fieldLabel(c.field)).join(', ');

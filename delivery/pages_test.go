@@ -51,11 +51,17 @@ func (pageTeams) GetByID(ctx context.Context, id string) (*model.Team, error) {
 
 type pagePlayers struct{}
 
+func (pagePlayers) GetAll(ctx context.Context, offset, limit int, filter model.PlayerFilter) ([]model.Player, int64, error) {
+	if offset > 100 {
+		return nil, 101, nil
+	}
+	return []model.Player{{ID: 9, Name: "Pro <One>"}}, 101, nil
+}
 func (pagePlayers) GetByID(ctx context.Context, id string) (*model.Player, error) {
 	if id == "404" {
 		return nil, &appError.Error{Code: appError.ENOTFOUND}
 	}
-	return &model.Player{ID: 9, Name: "Pro <One>", RealName: "Real Name", TeamID: 2, TeamName: "Test Team", SteamName: "steam one", SteamLocation: "Kyiv", SteamStatus: "ok", SteamPrivacy: "private", SteamUpdatedAt: 1788609600000, SteamPublicAt: 1788609600000, RosterTeam: &model.PlayerRosterTeam{ID: 3, Name: "Roster Team"}, Results: []model.PlayerResult{{LeagueID: 1, Placement: 3, LeagueName: "Test League"}}}, nil
+	return &model.Player{ID: 9, Name: "Pro <One>", RealName: "Real Name", TeamID: 2, TeamName: "Test Team", SteamName: "steam one", SteamLocation: "Kyiv", SteamStatus: "ok", SteamPrivacy: "private", SteamUpdatedAt: 1788609600000, SteamPublicAt: 1788609600000, RosterTeam: &model.PlayerRosterTeam{ID: 3, Name: "Roster Team"}, TeamHistory: []model.PlayerTeamEntry{{TeamID: 4, TeamName: "Old Team", StartTimestamp: 1788609600}}, Results: []model.PlayerResult{{LeagueID: 1, Placement: 3, LeagueName: "Test League"}}}, nil
 }
 func (pagePlayers) GetSitemapPlayers(ctx context.Context, offset, limit int) ([]int, int64, error) {
 	if offset > 0 {
@@ -107,10 +113,13 @@ func TestCrawlablePages(t *testing.T) {
 		{"/league/1", `href="/match/1/123"`},
 		{"/team/2", "5 wins"},
 		{"/player/9", "Pro &lt;One&gt;"},
+		{"/player", `href="/player/9"`},
+		{"/player", `href="/player?offset=100"`},
 		{"/player/9", "Steam profile is private; Steam still shows the name and avatar, other details were last seen public on 5 Sep 2026"},
 		{"/player/9", `href="/team/2"`},
 		{"/player/9", "Test League: place 3"},
 		{"/player/9", `href="/team/3"`},
+		{"/player/9", `href="/team/4">Old Team since 5 Sep 2026<`},
 		{"/player/9", `"@type":"Person"`},
 		{"/team", `href="/team/2"`},
 		{"/team?offset=100", `https://example.com/team?offset=100`},
@@ -161,6 +170,7 @@ func TestSitemaps(t *testing.T) {
 		{"/sitemaps/leagues/1", "urlset", "https://example.com/league/1"},
 		{"/sitemaps/teams/1", "urlset", "https://example.com/team/2"},
 		{"/sitemaps/players/1", "urlset", "https://example.com/player/9"},
+		{"/sitemaps/pages/1", "urlset", "https://example.com/player"},
 		{"/sitemap.xml", "sitemapindex", "https://example.com/sitemaps/players/1"},
 	} {
 		res := getPage(e, tc.path)

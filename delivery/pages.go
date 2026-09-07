@@ -43,7 +43,7 @@ func NewPagesDelivery(e *echo.Echo, leagues LeaguesService, teams TeamsService, 
 		return fmt.Errorf("SITE_URL must be an absolute http(s) origin")
 	}
 	p := &pagesDelivery{leagues: leagues, teams: teams, players: players, matches: matches, standings: standings, updates: updates, matchIndex: matchIndex, indexPath: indexPath, siteURL: strings.TrimRight(siteURL, "/"), analyticsID: analyticsID}
-	for _, route := range []string{"/", "/team", "/dpc", "/activity", "/league/:id", "/team/:id", "/player/:id", "/match/:leagueID/:matchID"} {
+	for _, route := range []string{"/", "/team", "/player", "/dpc", "/activity", "/league/:id", "/team/:id", "/player/:id", "/match/:leagueID/:matchID"} {
 		e.GET(route, p.page)
 		e.HEAD(route, p.page)
 	}
@@ -102,7 +102,7 @@ gtag('js', new Date());
 gtag('config', {{.AnalyticsID}});
 </script>{{end}}`))
 
-var pageBody = template.Must(template.New("body").Parse(`<header><a href="/">Dota 2 Leagues</a> · <a href="/team">Teams</a> · <a href="/dpc">DPC Standings</a> · <a href="/activity">Updates</a></header>
+var pageBody = template.Must(template.New("body").Parse(`<header><a href="/">Dota 2 Leagues</a> · <a href="/team">Teams</a> · <a href="/player">Players</a> · <a href="/dpc">DPC Standings</a> · <a href="/activity">Updates</a></header>
 <main><h1>{{.Title}}</h1><p>{{.Description}}</p>
 {{range .Paragraphs}}<p>{{.}}</p>{{end}}
 <ul>{{range .Links}}<li><a href="{{.URL}}">{{.Label}}</a></li>{{end}}</ul></main>`))
@@ -142,13 +142,13 @@ func (p *pagesDelivery) page(c echo.Context) error {
 	if offset > 0 {
 		data.Canonical += "?offset=" + strconv.Itoa(offset)
 	}
-	if c.Path() == "/" || c.Path() == "/team" {
+	if c.Path() == "/" || c.Path() == "/team" || c.Path() == "/player" {
 		for key, values := range c.QueryParams() {
 			if key == "offset" {
 				continue
 			}
 			for _, value := range values {
-				if value != "" && strings.Contains("|search|status|tier|region|live|country|pro|active|active_days|sort|order|", "|"+key+"|") {
+				if value != "" && strings.Contains("|search|status|tier|region|live|country|pro|team|active|active_days|sort|order|", "|"+key+"|") {
 					data.NoIndex = true
 				}
 			}
@@ -320,6 +320,29 @@ func (p *pagesDelivery) page(c echo.Context) error {
 				data.Links = append(data.Links, pageLink{fmt.Sprintf("/league/%d", result.LeagueID), fmt.Sprintf("League #%d: place %d", result.LeagueID, result.Standing)})
 			}
 		}
+	case "/player":
+		filter, filterErr := playerFilter(c)
+		if filterErr != nil {
+			return filterErr
+		}
+		data.Canonical = p.siteURL + listPageURL(c, offset)
+		data.Title = "Dota 2 Players"
+		data.Description = "Browse Dota 2 players, their teams, professional records and Steam profiles."
+		var rows []model.Player
+		var total int64
+		rows, total, err = p.players.GetAll(c.Request().Context(), offset, 100, filter)
+		if err == nil {
+			for i := range rows {
+				data.Links = append(data.Links, pageLink{fmt.Sprintf("/player/%d", rows[i].ID), playerDisplayName(&rows[i])})
+			}
+			if len(rows) == 0 {
+				if offset > 0 {
+					return echo.NewHTTPError(http.StatusNotFound)
+				}
+				data.Paragraphs = append(data.Paragraphs, "No players available yet.")
+			}
+			addListPagination(&data, c, offset, total)
+		}
 	case "/player/:id":
 		var player *model.Player
 		player, err = p.players.GetByID(c.Request().Context(), c.Param("id"))
@@ -364,7 +387,7 @@ func (p *pagesDelivery) page(c echo.Context) error {
 		}
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "Please try again later")
 	}
-	if c.Path() != "/" && c.Path() != "/team" && c.Path() != "/league/:id" && c.Path() != "/activity" {
+	if c.Path() != "/" && c.Path() != "/team" && c.Path() != "/player" && c.Path() != "/league/:id" && c.Path() != "/activity" {
 		data.Canonical = p.siteURL + c.Request().URL.Path
 	}
 	shell, err := os.ReadFile(p.indexPath)
@@ -476,7 +499,7 @@ func (p *pagesDelivery) sitemap(c echo.Context) error {
 			if page != 1 {
 				return echo.NewHTTPError(http.StatusNotFound)
 			}
-			doc.URLs = []sitemapEntry{{p.siteURL + "/"}, {p.siteURL + "/dpc"}, {p.siteURL + "/team"}, {p.siteURL + "/activity"}}
+			doc.URLs = []sitemapEntry{{p.siteURL + "/"}, {p.siteURL + "/dpc"}, {p.siteURL + "/team"}, {p.siteURL + "/player"}, {p.siteURL + "/activity"}}
 		case "leagues":
 			rows, _, err := p.leagues.GetAll(c.Request().Context(), (page-1)*1000, 1000, model.LeagueFilter{Status: "all"})
 			if err != nil {
@@ -540,7 +563,7 @@ func isHTMLPageRequest(c echo.Context) bool {
 		}
 	}
 	switch c.Path() {
-	case "", "/*", "/", "/team", "/dpc", "/activity", "/league/:id", "/team/:id", "/match/:leagueID/:matchID":
+	case "", "/*", "/", "/team", "/player", "/dpc", "/activity", "/league/:id", "/team/:id", "/player/:id", "/match/:leagueID/:matchID":
 		return true
 	default:
 		return false
@@ -551,7 +574,7 @@ var errorDocument = template.Must(template.New("error-page").Parse(`<!doctype ht
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>{{.Title}} | Dota 2 Leagues</title>
 <link rel="stylesheet" href="/build/index.css">
 <style>body{margin:0;min-height:100vh;background:#f5f5f0;color:#282d25;font:16px/1.6 'Fira Sans',Arial,sans-serif} .error-header{background:#fff;border-bottom:1px solid #dce1d4;padding:16px max(20px,calc((100vw - 1200px)/2));display:flex;align-items:center;gap:24px;flex-wrap:wrap}.error-header a{color:#60695a;text-decoration:none}.error-header nav{display:flex;gap:6px;flex-wrap:wrap}.error-header nav a{font-size:13px;padding:10px 12px;border-radius:5px}.error-header nav a:hover{background:#f0f2eb;color:#282d25}.error-header .brand{display:flex;align-items:center}.error-header img{width:129px;max-height:44px;object-fit:contain;filter:brightness(.45)}.error-main{max-width:800px;margin:72px auto;padding:0 24px}.error-code{font-size:13px;text-transform:uppercase;letter-spacing:2px;color:#626b5b}.error-main h1{font-size:clamp(28px,5vw,42px);line-height:1.2}.error-main p{color:#626b5b}.error-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}.error-actions a{padding:12px 20px;border:1px solid #d9dfd1;border-radius:5px;text-decoration:none;color:#252922}.error-actions a:first-child{background:#282d25;border-color:#282d25;color:#fff}.error-actions a:focus-visible,.error-header a:focus-visible{outline:3px solid #805f16;outline-offset:4px}@media(max-width:600px){.error-header{padding:16px;gap:14px}.error-header .brand{flex-basis:100%}.error-header nav{width:100%;justify-content:space-between}.error-main{margin:40px auto;padding:0 20px}}</style></head>
-<body><header class="error-header"><a class="brand" href="/" aria-label="Dota 2 Leagues home"><img src="/logo.png" alt="Dota 2 Leagues"></a><nav aria-label="Main navigation"><a href="/">Leagues</a><a href="/team">Teams</a><a href="/activity">Updates</a><a href="/dpc">DPC Standings</a></nav></header>
+<body><header class="error-header"><a class="brand" href="/" aria-label="Dota 2 Leagues home"><img src="/logo.png" alt="Dota 2 Leagues"></a><nav aria-label="Main navigation"><a href="/">Leagues</a><a href="/team">Teams</a><a href="/player">Players</a><a href="/activity">Updates</a><a href="/dpc">DPC Standings</a></nav></header>
 <main class="error-main"><div class="error-code">{{.Status}} / {{.Label}}</div><h1>{{.Title}}</h1><p>{{.Message}}</p><div class="error-actions">{{if .Retry}}<a href="{{.Retry}}">Try again</a>{{end}}<a href="/">Browse leagues</a><a href="/team">Browse teams</a></div></main></body></html>`))
 
 func (p *pagesDelivery) errorPage(c echo.Context, status int) error {

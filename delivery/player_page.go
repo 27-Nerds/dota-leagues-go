@@ -64,6 +64,20 @@ func populatePlayerPage(data *pageContent, player *model.Player) {
 		data.Paragraphs = append(data.Paragraphs, "Listed on the roster of "+name+".")
 		data.Links = append(data.Links, pageLink{fmt.Sprintf("/team/%d", roster.ID), name})
 	}
+	for _, entry := range player.TeamHistory {
+		if entry.TeamID <= 0 {
+			continue
+		}
+		name := entry.TeamName
+		if name == "" {
+			name = fmt.Sprintf("Team #%d", entry.TeamID)
+		}
+		label := name
+		if entry.StartTimestamp > 0 {
+			label += " since " + time.Unix(int64(entry.StartTimestamp), 0).UTC().Format("2 Jan 2006")
+		}
+		data.Links = append(data.Links, pageLink{fmt.Sprintf("/team/%d", entry.TeamID), label})
+	}
 	if player.TotalEarnings > 0 {
 		data.Paragraphs = append(data.Paragraphs, fmt.Sprintf("Recorded earnings: $%d", player.TotalEarnings))
 	}

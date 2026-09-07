@@ -84,6 +84,10 @@ func (s *rosterStore) Store(context.Context, *model.TeamRoster) error {
 
 type existingPlayers struct{ PlayerRepository }
 
+func (existingPlayers) GetProfiles(_ context.Context, ids []int) (map[int]model.Player, error) {
+	return map[int]model.Player{3: {ID: 3, Name: "Newcomer"}}, nil
+}
+
 func (existingPlayers) NeedsProfileRefresh(context.Context, int, time.Time) (bool, error) {
 	return false, nil
 }
@@ -127,8 +131,17 @@ func TestRosterUpdatesFollowSuccessfulWrites(t *testing.T) {
 	if err := dl.storeTeamRoster(t.Context(), team, true); err != nil {
 		t.Fatal(err)
 	}
-	if len(feed.rows) != 1 || feed.rows[0].Entity != "roster" || feed.rows[0].Changes[0].Field != "members" {
+	if len(feed.rows) != 3 || feed.rows[0].Entity != "roster" || feed.rows[0].Changes[0].Field != "members" {
 		t.Fatalf("missing roster change: %+v", feed.rows)
+	}
+	// Member 2 was replaced by member 3: each gets a mirrored entry on their own log.
+	left, joined := feed.rows[1], feed.rows[2]
+	if left.Entity != "player" || left.EntityID != 2 || left.Name != "Player #2" || left.URL != "/player/2" ||
+		left.Changes[0].Field != "roster_team" || left.Changes[0].Before != "Team A" || left.Changes[0].After != "" {
+		t.Fatalf("departure not mirrored: %+v", left)
+	}
+	if joined.EntityID != 3 || joined.Name != "Newcomer" || joined.Changes[0].After != "Team A" || joined.Changes[1].Field != "roster_team_id" || joined.Changes[1].After != 7 {
+		t.Fatalf("arrival not mirrored: %+v", joined)
 	}
 }
 

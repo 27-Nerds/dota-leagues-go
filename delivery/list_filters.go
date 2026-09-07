@@ -21,6 +21,28 @@ func listSort(c echo.Context, allowed ...string) (string, string, error) {
 	return sort, order, nil
 }
 
+func playerFilter(c echo.Context) (model.PlayerFilter, error) {
+	f := model.PlayerFilter{Search: c.QueryParam("search"), Country: strings.ToUpper(strings.TrimSpace(c.QueryParam("country")))}
+	var err error
+	f.Sort, f.Order, err = listSort(c, "name")
+	if err != nil {
+		return f, err
+	}
+	if f.Country != "" && (len(f.Country) != 2 || f.Country[0] < 'A' || f.Country[0] > 'Z' || f.Country[1] < 'A' || f.Country[1] > 'Z') {
+		return f, echo.NewHTTPError(http.StatusBadRequest, "Country must be a two-letter code")
+	}
+	for name, target := range map[string]**bool{"pro": &f.Pro, "team": &f.HasTeam} {
+		if value := c.QueryParam(name); value != "" {
+			parsed, parseErr := strconv.ParseBool(value)
+			if parseErr != nil {
+				return f, echo.NewHTTPError(http.StatusBadRequest, "Invalid "+name+" filter")
+			}
+			*target = &parsed
+		}
+	}
+	return f, nil
+}
+
 func teamFilter(c echo.Context) (model.TeamFilter, error) {
 	f := model.TeamFilter{Search: c.QueryParam("search"), Country: strings.ToUpper(strings.TrimSpace(c.QueryParam("country"))), ActiveDays: 90}
 	var err error

@@ -23,6 +23,7 @@ type TeamsService interface {
 
 // PlayersService supplies the data required by HTTP endpoints.
 type PlayersService interface {
+	GetAll(ctx context.Context, offset, limit int, filter model.PlayerFilter) ([]model.Player, int64, error)
 	GetByID(ctx context.Context, id string) (*model.Player, error)
 	GetSitemapPlayers(ctx context.Context, offset, limit int) ([]int, int64, error)
 }

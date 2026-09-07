@@ -9,6 +9,7 @@ import (
 
 // PlayerReader retrieves player profiles for application requests.
 type PlayerReader interface {
+	GetAll(ctx context.Context, offset, limit int, filter model.PlayerFilter) ([]model.Player, int64, error)
 	GetByID(ctx context.Context, id int) (*model.Player, error)
 	GetSitemapPlayers(ctx context.Context, offset, limit int) ([]int, int64, error)
 }
@@ -17,6 +18,14 @@ type PlayersHandler struct{ repository PlayerReader }
 
 func NewPlayersHandler(repository PlayerReader) *PlayersHandler {
 	return &PlayersHandler{repository: repository}
+}
+
+func (h *PlayersHandler) GetAll(ctx context.Context, offset, limit int, filter model.PlayerFilter) ([]model.Player, int64, error) {
+	rows, total, err := h.repository.GetAll(ctx, offset, limit, filter)
+	if err != nil {
+		return nil, 0, &e.Error{Op: "PlayersHandler.GetAll", Err: err}
+	}
+	return rows, total, nil
 }
 
 // GetByID returns a public view of the profile without refresh bookkeeping.

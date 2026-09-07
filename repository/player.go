@@ -6,6 +6,7 @@ import (
 	e "dota_league/error"
 	"dota_league/model"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/arangodb/go-driver/v2/arangodb/shared"
@@ -103,6 +104,12 @@ LET results = (
   league_available: details != null && details.league_id > 0
  })
 )
+LET history = (
+ FOR h IN (IS_ARRAY(p.audit_entries) ? p.audit_entries : [])
+ LET t = h.team_id > 0 ? DOCUMENT("teams", TO_STRING(h.team_id)) : null
+ SORT h.start_timestamp DESC
+ RETURN MERGE(h, {team_name: t.name != null && t.name != "" ? t.name : h.team_name, team_available: t != null && t.team_id > 0})
+)
 LET roster = FIRST(
  FOR t IN teams
  FILTER @account IN t.members[*].account_id
@@ -115,12 +122,57 @@ RETURN MERGE(p, {
  team_tag: team.tag != null && team.tag != "" ? team.tag : p.team_tag,
  team_available: team != null && team.team_id > 0,
  roster_team: roster != null && roster.id > 0 ? roster : null,
+ audit_entries: history,
  results
 })`, map[string]any{"id": strconv.Itoa(id), "account": id}, &player)
 	if err != nil {
 		return nil, &e.Error{Op: "PlayerRepository.GetByID", Err: err}
 	}
 	return &player, nil
+}
+
+// GetAll lists the player directory. Professionals with the highest recorded earnings
+// rank first by default; name and earnings sorts are explicit. ID breaks ties for stable pagination.
+func (pr *PlayerRepository) GetAll(ctx context.Context, offset, limit int, filter model.PlayerFilter) ([]model.Player, int64, error) {
+	sort := "listed DESC, (p.team_id > 0) DESC, LOWER(p.name) ASC, p.account_id ASC"
+	if field, ok := map[string]string{"name": "LOWER(p.name)"}[filter.Sort]; ok {
+		sort = field + " " + sortOrder(filter.Sort, filter.Order) + ", p.account_id ASC"
+	}
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	// "Professional" means the account appears in Valve's pro player feed; Steam-only
+	// fallbacks are the rest. Valve no longer sends an is_pro flag.
+	cursor, err := pr.Conn.QueryAll(ctx, `FOR p IN players
+ FILTER p.account_id > 0
+ LET listed = p.profile_source != "steam"
+ FILTER @search == "" || CONTAINS(LOWER(p.name), @search) || CONTAINS(LOWER(p.real_name), @search) || CONTAINS(LOWER(p.steam_name), @search) || TO_STRING(p.account_id) == @search
+ FILTER @country == "" || UPPER(p.country_code) == @country
+ FILTER @pro == null || listed == @pro
+ FILTER @hasTeam == null || (p.team_id > 0) == @hasTeam
+ SORT `+sort+`
+ LIMIT @offset, @limit
+ LET team = p.team_id > 0 ? DOCUMENT("teams", TO_STRING(p.team_id)) : null
+ RETURN MERGE(p, {team_name: team.name != null && team.name != "" ? team.name : p.team_name, team_tag: team.tag != null && team.tag != "" ? team.tag : p.team_tag})`,
+		map[string]any{"offset": offset, "limit": limit, "search": strings.ToLower(strings.TrimSpace(filter.Search)), "country": strings.ToUpper(strings.TrimSpace(filter.Country)), "pro": filter.Pro, "hasTeam": filter.HasTeam}, true)
+	if shared.IsNotFound(err) || e.IsNotFound(err) {
+		return []model.Player{}, 0, nil
+	}
+	if err != nil {
+		return nil, 0, &e.Error{Op: "PlayerRepository.GetAll", Err: err}
+	}
+	defer db.CloseCursor(cursor)
+	players := []model.Player{}
+	for {
+		var player model.Player
+		if _, err := cursor.ReadDocument(ctx, &player); shared.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			return nil, 0, &e.Error{Op: "PlayerRepository.GetAll", Err: err}
+		}
+		player.DBKey, player.SteamNextRefreshAt, player.ProfileCheckedAt = "", 0, 0
+		players = append(players, player)
+	}
+	return players, int64(cursor.Statistics().FullCountInt), nil
 }
 
 // GetProfiles returns the stored documents for the requested IDs; missing players are omitted.
@@ -153,12 +205,12 @@ func (pr *PlayerRepository) GetProfiles(ctx context.Context, ids []int) (map[int
 	return players, nil
 }
 
-// GetSitemapPlayers lists professional player IDs in a stable order for sitemap pages.
+// GetSitemapPlayers lists IDs of players from Valve's pro feed in a stable order for sitemap pages.
 func (pr *PlayerRepository) GetSitemapPlayers(ctx context.Context, offset, limit int) ([]int, int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 	cursor, err := pr.Conn.QueryAll(ctx, `FOR p IN players
- FILTER p.is_pro == true && p.account_id > 0
+ FILTER p.profile_source != "steam" && p.account_id > 0
  SORT p.account_id ASC LIMIT @offset, @limit RETURN p.account_id`, map[string]any{"offset": offset, "limit": limit}, true)
 	if shared.IsNotFound(err) || e.IsNotFound(err) {
 		return nil, 0, nil
