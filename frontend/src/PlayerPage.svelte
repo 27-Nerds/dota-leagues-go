@@ -6,11 +6,13 @@
   import { api } from "./lib/api.js";
   import ChangeLog from "./ChangeLog.svelte";
   import { countryText, fantasyRoleText, formatDate, formatDateTime, formatMoney, steamProfileUrl } from "./lib/constants.js";
-  import { steamState, playerDisplayName, isListedPro, proRegistration, proRegistrations, teamHistory } from "./lib/players.js";
+  import { steamState, playerDisplayName, isListedPro, proRegistration, proRegistrations, teamHistory, teamMoves } from "./lib/players.js";
+  import { apiResults } from "./lib/api.js";
   export let id;
   let player = null;
   let loadError = null;
   let loading = true;
+  let updates = [];
   $: name = playerDisplayName(player, id);
   $: steam = steamState(player);
   $: results = (Array.isArray(player?.results) ? player.results : []).filter(r => r && r.league_id > 0);
@@ -18,6 +20,8 @@
   $: registration = proRegistration(player);
   $: registrations = proRegistrations(player);
   $: history = teamHistory(player);
+  $: current = history[0] || null;
+  $: moves = teamMoves(player, updates);
   $: staleFeed = listed && player?.dpc_seen_at > 0 && Date.now() - Number(player.dpc_seen_at) > 7 * 86400000;
   // Prefer the DPC team; fall back to the team whose Valve roster lists the player.
   $: roster = player?.roster_team?.id > 0 ? player.roster_team : null;
@@ -31,6 +35,9 @@
       const result = await api(`/players/${id}`);
       if (!result?.account_id) throw Object.assign(new Error("This player is not available."), { status: 404 });
       player = result;
+      apiResults("/updates", { entity: "player", search: String(id), limit: 100 })
+        .then(data => { updates = data.results.filter(u => String(u.entity_id) === String(id)); })
+        .catch(() => { updates = []; });
     } catch (err) { loadError = err; }
     finally { loading = false; }
   }
@@ -65,8 +72,9 @@
       <h2 id="pro-title">Professional profile</h2>
       {#if listed}
         {#if staleFeed}<p class="callout">Not present in Valve’s pro player feed since {formatDateTime(millis(player.dpc_seen_at))} UTC. The details below are from that last listing.</p>{/if}
-        {#if registration || rosterDiffers || player.sponsor?.trim() || player.is_locked || player.total_earnings > 0}
+        {#if registration || current || rosterDiffers || player.sponsor?.trim() || player.is_locked || player.total_earnings > 0}
           <dl class="facts">
+            {#if current}<div><dt>Team since <small title="Start date from Valve's pro player feed">Valve</small></dt><dd>{formatDate(current.start_timestamp)}<span class="tag">{current.team_name || `Team #${current.team_id}`}</span></dd></div>{/if}
             {#if registration}<div><dt>Pro registration</dt><dd>Period {registration.registration_period}<span class="tag">registered {formatDate(registration.timestamp)}</span></dd></div>{/if}
             {#if rosterDiffers}<div><dt>Current roster <small title="From the team's Valve roster, which can differ from the DPC player feed">(Valve roster)</small></dt><dd><a href={`/team/${roster.id}`}>{roster.name || `Team #${roster.id}`}</a>{#if roster.joined_at}<span class="tag">since {formatDate(roster.joined_at)}</span>{/if}</dd></div>{/if}
             {#if player.total_earnings > 0}<div><dt>Recorded earnings</dt><dd>{formatMoney(player.total_earnings)}</dd></div>{/if}
@@ -74,13 +82,14 @@
             {#if player.is_locked}<div><dt>Roster</dt><dd>Locked</dd></div>{/if}
           </dl>
         {/if}
-        {#if history.length}
-          <h3>Team history <small title="Valve’s per-player membership log from the pro player feed">Valve</small></h3>
+        {#if moves.length}
+          <h3>Team history <small title="Current team from Valve's feed, plus moves recorded by this site. Valve does not publish past teams.">Recorded</small></h3>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to scroll the table horizontally.) -->
           <div class="table-scroll" role="region" aria-label="Team history" tabindex="0"><table>
-            <thead><tr><th scope="col">Team</th><th scope="col" class="date">Since (UTC)</th></tr></thead>
-            <tbody>{#each history as h}<tr><td>{#if h.team_available}<a href={`/team/${h.team_id}`}>{h.team_name || `Team #${h.team_id}`}</a>{:else}{h.team_name || `Team #${h.team_id}`}{/if}{#if h.team_tag && h.team_tag !== h.team_name}<span class="tag">{h.team_tag}</span>{/if}</td><td class="date">{formatDate(h.start_timestamp)}</td></tr>{/each}</tbody>
+            <thead><tr><th scope="col" class="date">Date (UTC)</th><th scope="col">Move</th><th scope="col">Source</th></tr></thead>
+            <tbody>{#each moves as m}<tr><td class="date">{formatDate(m.at / 1000)}</td><td>{#if m.toId && m.fromId}{m.from || `Team #${m.fromId}`} → <a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>{:else if m.toId}Joined <a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>{:else}Left {m.from || `Team #${m.fromId}`}{/if}</td><td class="muted">{m.source}</td></tr>{/each}</tbody>
           </table></div>
+          <p class="hint">Valve publishes only the current team, so moves before this site started recording them are not shown.</p>
         {/if}
         {#if registrations.length}
           <h3>Registration history <small title="Valve’s pro circuit registration windows, newest first">Valve</small></h3>
@@ -98,7 +107,7 @@
             <tbody>{#each results as r}<tr><td>{#if r.league_available}<a href={`/league/${r.league_id}`}>{r.league_name || `Tournament #${r.league_id}`}</a>{:else}{r.league_name || `Tournament #${r.league_id}`}<small class="unavailable">Details unavailable</small>{/if}</td><td class="num">{r.placement || "—"}</td><td class="num">{formatMoney(r.earnings)}</td></tr>{/each}</tbody>
           </table></div>
         {/if}
-        {#if !history.length && !registrations.length && !results.length && !registration}
+        {#if !moves.length && !registrations.length && !results.length && !registration}
           <p class="callout">Valve’s pro feed lists this player without registration or team history yet.</p>
         {/if}
       {:else}
@@ -166,6 +175,7 @@
   h3 small { font-weight: 500; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-subtle); }
   .table-scroll + h3 { margin-top: 28px; }
   .date, .num { white-space: nowrap; } .num { text-align: right; } td.date { color: var(--muted); }
+  .hint { margin: 8px 0 0; color: var(--text-subtle); font-size: 12px; }
   .unavailable { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
   .external { width: 100%; } .external span { transition: transform 160ms ease; } .external:hover span { transform: translate(2px, -2px); }
 

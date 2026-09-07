@@ -32,6 +32,24 @@ export function teamHistory(player) {
   return (Array.isArray(player?.audit_entries) ? player.audit_entries : []).filter(h => h && h.team_id > 0).sort((a, b) => (b.start_timestamp || 0) - (a.start_timestamp || 0));
 }
 
+// Team history: Valve's feed only carries the current team, so past moves come from the
+// site's own recorded changes (DPC feed team changes and Valve roster joins/leaves).
+export function teamMoves(player, updates) {
+  const rows = [];
+  for (const u of Array.isArray(updates) ? updates : []) {
+    const changes = Array.isArray(u.changes) ? u.changes : [];
+    const dpc = changes.find(c => c.field === 'team_id');
+    const dpcName = changes.find(c => c.field === 'team');
+    if (dpc) rows.push({ at: Number(u.created_at), fromId: Number(dpc.before) || 0, toId: Number(dpc.after) || 0, from: dpcName?.before || '', to: dpcName?.after || '', source: 'Pro player feed' });
+    const roster = changes.find(c => c.field === 'roster_team_id');
+    const rosterName = changes.find(c => c.field === 'roster_team');
+    if (roster) rows.push({ at: Number(u.created_at), fromId: Number(roster.before) || 0, toId: Number(roster.after) || 0, from: rosterName?.before || '', to: rosterName?.after || '', source: 'Team roster' });
+  }
+  const current = teamHistory(player)[0];
+  if (current) rows.push({ at: Number(current.start_timestamp) * 1000, fromId: 0, toId: current.team_id, from: '', to: current.team_name || `Team #${current.team_id}`, source: 'Pro player feed', joined: true });
+  return rows.sort((a, b) => b.at - a.at);
+}
+
 export function playerDisplayName(player, id) {
   return player?.name?.trim() || player?.steam_name?.trim() || `Player #${id}`;
 }

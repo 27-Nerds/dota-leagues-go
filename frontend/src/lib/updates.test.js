@@ -128,6 +128,12 @@ test('steam state keeps last public data visible after a profile goes private', 
   const { proRegistrations } = await import('./players.js');
   assert.deepEqual(proRegistrations({pro_registration:[{registration_period:10,timestamp:1},{registration_period:9,timestamp:0},{registration_period:11,timestamp:5}]}).map(r=>r.registration_period), [11,10]);
   assert.deepEqual(teamHistory({audit_entries:[{team_id:1,start_timestamp:1},{team_id:0,start_timestamp:9},{team_id:2,start_timestamp:3}]}).map(h=>h.team_id), [2,1]);
+  const { teamMoves } = await import('./players.js');
+  const moves = teamMoves({audit_entries:[{team_id:9,team_name:'Now',start_timestamp:1_700_000}]}, [
+    {created_at: 3_000_000_000, changes:[{field:'team_id',before:1,after:9},{field:'team',before:'Old',after:'Now'}]},
+    {created_at: 2_000_000_000, changes:[{field:'roster_team_id',before:1,after:0},{field:'roster_team',before:'Old',after:''}]},
+    {created_at: 1_000_000, changes:[{field:'name',before:'a',after:'b'}]}]);
+  assert.deepEqual(moves.map(m => [m.source, m.fromId, m.toId]), [['Pro player feed',1,9],['Team roster',1,0],['Pro player feed',0,9]]);
   assert.equal(playerDisplayName(null, 3), 'Player #3');
 });
 test('related field changes receive meaningful titles', () => {
