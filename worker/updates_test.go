@@ -36,6 +36,25 @@ func TestUpdatesIgnoreRefreshMetadata(t *testing.T) {
 	}
 }
 
+func TestFeedFormatDriftDoesNotWipeStoredFields(t *testing.T) {
+	previous := &model.Player{ID: 5, Name: "Malady", CountryCode: "kz", RealName: "Real", IsPro: true, TotalEarnings: 11800, Results: []model.PlayerResult{{LeagueID: 1}}}
+	incoming := &model.Player{ID: 5, Name: "Maladych", Sponsor: "Yandex"}
+	carryForwardProfile(incoming, previous)
+	if incoming.CountryCode != "kz" || incoming.RealName != "Real" || !incoming.IsPro || incoming.TotalEarnings != 11800 || len(incoming.Results) != 1 || incoming.Name != "Maladych" || incoming.Sponsor != "Yandex" {
+		t.Fatalf("carry-forward wrong: %+v", incoming)
+	}
+	changed := &model.Player{ID: 5, CountryCode: "ua", RealName: "New"}
+	carryForwardProfile(changed, previous)
+	if changed.CountryCode != "ua" || changed.RealName != "New" {
+		t.Fatal("explicit new values must win")
+	}
+	fromSteam := &model.Player{ID: 6}
+	carryForwardProfile(fromSteam, &model.Player{ID: 6, ProfileSource: "steam", CountryCode: "xx", TotalEarnings: 5})
+	if fromSteam.CountryCode != "" || fromSteam.TotalEarnings != 0 {
+		t.Fatal("a Steam fallback carries no professional data to keep")
+	}
+}
+
 func TestPlayerProfileChangesRecordTeamMovesAndIdentity(t *testing.T) {
 	store := &capturedUpdates{}
 	dl := &DataLoader{Updates: store}
@@ -53,8 +72,13 @@ func TestPlayerProfileChangesRecordTeamMovesAndIdentity(t *testing.T) {
 	for _, c := range store.rows[0].Changes {
 		fields[c.Field] = c
 	}
-	if fields["name"].After != "Pro" || fields["team"].After != "Team A" || fields["is_pro"].After != true || fields["total_earnings"].After != 100 {
+	if fields["name"].After != "Pro" || fields["team"].After != "Team A" {
 		t.Fatalf("identity changes missing: %+v", store.rows[0].Changes)
+	}
+	for _, dropped := range []string{"is_pro", "total_earnings"} {
+		if _, ok := fields[dropped]; ok {
+			t.Fatalf("%s is no longer supplied by the feed and must not be diffed", dropped)
+		}
 	}
 	if _, refresh := fields["steam_next_refresh_at"]; refresh {
 		t.Fatal("refresh bookkeeping leaked into the feed")

@@ -39,6 +39,28 @@ func (dl *DataLoader) performPlayersUpdate(ctx context.Context) error {
 	return nil
 }
 
+// carryForwardProfile keeps stored values for fields Valve's feed has stopped sending
+// or sends empty (is_pro, earnings, results, and sometimes country or real name), so a
+// format change never wipes data or appears as a profile change.
+func carryForwardProfile(player, previous *model.Player) {
+	if previous.ProfileSource == "steam" {
+		return
+	}
+	player.IsPro = previous.IsPro
+	if player.TotalEarnings == 0 {
+		player.TotalEarnings = previous.TotalEarnings
+	}
+	if len(player.Results) == 0 {
+		player.Results = previous.Results
+	}
+	if player.CountryCode == "" {
+		player.CountryCode = previous.CountryCode
+	}
+	if player.RealName == "" {
+		player.RealName = previous.RealName
+	}
+}
+
 // storePlayers gets data from api and stores it into DB
 func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) {
 	playersData, err := api.LoadPlayers(ctx)
@@ -57,6 +79,9 @@ func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) 
 	seenAt := time.Now().UnixMilli()
 	for _, player := range playersData.Players {
 		player.DPCSeenAt = seenAt
+		if previous, ok := stored[player.ID]; ok {
+			carryForwardProfile(&player, &previous)
+		}
 		created, err := dl.PlayerRepository.SaveProfile(ctx, &player)
 		if err != nil {
 			return nil, err

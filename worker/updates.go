@@ -65,10 +65,10 @@ func playerSnapshot(player *model.Player) map[string]any {
 	if team == "" && player.TeamID > 0 {
 		team = "Team #" + strconv.Itoa(player.TeamID)
 	}
+	// is_pro and total_earnings are no longer supplied by Valve's feed, so they are not diffed.
 	return map[string]any{
 		"name": player.Name, "real_name": player.RealName, "country_code": player.CountryCode,
-		"team_id": player.TeamID, "team": team, "fantasy_role": player.FantasyRole,
-		"is_pro": player.IsPro, "sponsor": player.Sponsor, "total_earnings": player.TotalEarnings,
+		"team_id": player.TeamID, "team": team, "fantasy_role": player.FantasyRole, "sponsor": player.Sponsor,
 	}
 }
 
