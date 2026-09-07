@@ -97,4 +97,57 @@ func TestSteamProfileUpgrade(t *testing.T) {
 	if due, err := repo.NeedsProfileRefresh(t.Context(), 42, now.Add(48*time.Hour)); err != nil || due {
 		t.Fatalf("DPC refresh %v %v", due, err)
 	}
+	// A later DPC sync must refresh the professional identity while keeping Steam data.
+	if err := NewTeamRepository(conn).Store(t.Context(), &model.Team{ID: 37, Name: "New Team", Tag: "NT"}); err != nil {
+		t.Fatal(err)
+	}
+	moved := &model.Player{ID: 42, Name: "DPC name", IsPro: true, TeamID: 37, Results: []model.PlayerResult{{LeagueID: 1, Placement: 2}}}
+	if created, err := repo.SaveProfile(t.Context(), moved); err != nil || created {
+		t.Fatalf("DPC refresh %v %v", created, err)
+	}
+	profile, err := repo.GetByID(t.Context(), 42)
+	if err != nil || profile.TeamID != 37 || profile.TeamName != "New Team" || !profile.TeamAvailable || profile.SteamName != "Steam name" || len(profile.Results) != 1 || profile.Results[0].LeagueAvailable || profile.RosterTeam != nil {
+		t.Fatalf("profile read: %+v %v", profile, err)
+	}
+	// The Valve roster can list a player the DPC feed shows without a team; the newest roster entry wins.
+	if _, err := conn.Query(t.Context(), `LET rows = [
+  {_key: "38", team_id: 38, name: "Roster Team", tag: "RT", members: [{account_id: 42, time_joined: 200}]},
+  {_key: "39", team_id: 39, name: "Old Team", members: [{account_id: 42, time_joined: 100}]}]
+ FOR r IN rows INSERT r INTO teams RETURN 1`, nil, new(int)); err != nil {
+		t.Fatal(err)
+	}
+	profile, err = repo.GetByID(t.Context(), 42)
+	if err != nil || profile.RosterTeam == nil || profile.RosterTeam.ID != 38 || profile.RosterTeam.Name != "Roster Team" || profile.RosterTeam.JoinedAt != 200 {
+		t.Fatalf("roster team: %+v %v", profile.RosterTeam, err)
+	}
+	profiles, err := repo.GetProfiles(t.Context(), []int{42, 43})
+	if err != nil || len(profiles) != 1 || profiles[42].TeamID != 37 {
+		t.Fatalf("profiles batch: %+v %v", profiles, err)
+	}
+	if _, err := repo.GetByID(t.Context(), 43); err == nil {
+		t.Fatal("missing player must not resolve")
+	}
+	// Going private keeps the last public location; a later public check may clear it.
+	if err := repo.SaveSteamEnrichment(t.Context(), 42, &model.Player{Name: "Steam name", SteamLocation: "Odesa", SteamPrivacy: "public"}, now, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SaveSteamEnrichment(t.Context(), 42, &model.Player{Name: "Steam name", SteamPrivacy: "private"}, now.Add(time.Hour), "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Query(t.Context(), `RETURN DOCUMENT("players", "42")`, nil, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.SteamLocation != "Odesa" || saved.SteamPrivacy != "private" || saved.SteamCheckedAt != now.Add(time.Hour).UnixMilli() || saved.SteamPublicAt != now.UnixMilli() {
+		t.Fatalf("private profile lost last public data: %+v", saved)
+	}
+	ids, _, err = repo.GetSitemapPlayers(t.Context(), 0, 10)
+	if err != nil || len(ids) != 1 || ids[0] != 42 {
+		t.Fatalf("sitemap players: %v %v", ids, err)
+	}
+	if _, err := repo.SaveProfile(t.Context(), &model.Player{ID: 44, Name: "Amateur"}); err != nil {
+		t.Fatal(err)
+	}
+	if ids, total, err := repo.GetSitemapPlayers(t.Context(), 0, 10); err != nil || total != 1 || len(ids) != 1 {
+		t.Fatalf("non-pro player listed in sitemap: %v %d %v", ids, total, err)
+	}
 }

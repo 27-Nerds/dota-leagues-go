@@ -19,31 +19,56 @@ import (
 // valveLimiter is shared by all Valve API requests.
 var valveLimiter atomic.Pointer[rate.Limiter]
 
+// steamLimiter paces steamcommunity.com requests. Steam is a separate host with
+// its own limits, so its lookups neither wait for nor delay Valve API traffic.
+var steamLimiter atomic.Pointer[rate.Limiter]
+
 // Only one background request may reserve a future token. Other workers wait
 // here so interactive cache misses do not queue behind every live-game poll.
 var backgroundRequests = make(chan struct{}, 1)
 
 func init() {
 	valveLimiter.Store(rate.NewLimiter(defaultValveRPS, 1))
+	steamLimiter.Store(rate.NewLimiter(defaultSteamRPS, 1))
 }
 
 const defaultValveRPS = 1.5
+const defaultSteamRPS = 1.0
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
 // SetValveRateLimit configures the shared rate limiter for all Valve API requests (requests per second).
 // Call it before starting workers.
 func SetValveRateLimit(rps float64) {
+	valveLimiter.Store(newLimiter(rps))
+	slog.Info("Valve API rate limit configured", "rps", rps)
+}
+
+// SetSteamRateLimit configures the limiter for Steam Community requests (requests per second).
+// Call it before starting workers.
+func SetSteamRateLimit(rps float64) {
+	steamLimiter.Store(newLimiter(rps))
+	slog.Info("Steam rate limit configured", "rps", rps)
+}
+
+func newLimiter(rps float64) *rate.Limiter {
 	burst := 1
 	if b := int(rps); b > burst {
 		burst = b
 	}
-	valveLimiter.Store(rate.NewLimiter(rate.Limit(rps), burst))
-	slog.Info("Valve API rate limit configured", "rps", rps, "burst", burst)
+	return rate.NewLimiter(rate.Limit(rps), burst)
 }
 
 func doRequest(ctx context.Context, url string) (io.ReadCloser, error) {
 	return doRateLimitedRequest(ctx, url, false)
+}
+
+// doSteamRequest bypasses the Valve limiter and background slot entirely.
+func doSteamRequest(ctx context.Context, url string) (io.ReadCloser, error) {
+	if err := steamLimiter.Load().Wait(ctx); err != nil {
+		return nil, &e.Error{Code: e.EINTERNAL, Op: "api.doSteamRequest", Err: err}
+	}
+	return performRequest(ctx, url)
 }
 
 func doInteractiveRequest(ctx context.Context, url string) (io.ReadCloser, error) {
@@ -68,6 +93,11 @@ func doRateLimitedRequest(ctx context.Context, url string, interactive bool) (io
 	if err := waitForValve(ctx, interactive); err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}
 	}
+	return performRequest(ctx, url)
+}
+
+func performRequest(ctx context.Context, url string) (io.ReadCloser, error) {
+	op := "api.doRequest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, &e.Error{Code: e.EINTERNAL, Op: op, Err: err}

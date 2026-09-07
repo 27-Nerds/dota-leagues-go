@@ -46,6 +46,14 @@ func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) 
 		return nil, err
 	}
 
+	ids := make([]int, 0, len(playersData.Players))
+	for _, player := range playersData.Players {
+		ids = append(ids, player.ID)
+	}
+	stored, err := dl.PlayerRepository.GetProfiles(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	for _, player := range playersData.Players {
 		created, err := dl.PlayerRepository.SaveProfile(ctx, &player)
 		if err != nil {
@@ -53,6 +61,12 @@ func (dl *DataLoader) storePlayers(ctx context.Context) ([]model.Player, error) 
 		}
 		if created {
 			dl.recordPlayerUpdate(ctx, &player)
+			continue
+		}
+		if previous, ok := stored[player.ID]; ok {
+			// A Steam fallback gaining a DPC profile is an identity change worth showing,
+			// so the fallback's name is compared like any other stored value.
+			dl.recordUpdate(ctx, "player", player.ID, player.Name, playerSnapshot(&previous), playerSnapshot(&player))
 		}
 	}
 

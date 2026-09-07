@@ -1,5 +1,6 @@
 <script>
   import SourceData from "./SourceData.svelte";
+  import ChangeLog from "./ChangeLog.svelte";
   import Breadcrumbs from "./Breadcrumbs.svelte";
   import { onMount, onDestroy } from 'svelte';
   import Schedule from './Schedule.svelte';
@@ -8,7 +9,7 @@
   import EntityImage from './EntityImage.svelte';
   import StatePanel from './StatePanel.svelte';
   import { api, apiResults } from './lib/api.js';
-  import { formatDate, regionText, tierText, formatMoney, normalizeUrl, leagueLogo } from './lib/constants.js';
+  import { formatDate, regionText, tierText, statusText, formatMoney, normalizeUrl, leagueLogo } from './lib/constants.js';
   import { pageOffset } from './lib/routes.js';
   import { dotaTVUrl } from './lib/dotatv.js';
   export let id;
@@ -102,7 +103,7 @@
   <div class="banner profile-header">
     <div class="league-art"><EntityImage src={leagueLogo(id)} name={league.name} wide contain /></div>
     <div class="info"><p class="eyebrow">{regionText(league.region)} · {tierText(league.tier)}{#if league.is_live}<span class="badge">● Live now</span>{/if}</p><h1>{league.name || `League #${id}`}</h1>
-      <div class="facts"><div><span>Dates (UTC)</span><strong>{formatDate(league.start_timestamp)} – {formatDate(league.end_timestamp)}</strong></div><div><span>Prize pool</span><strong>{formatMoney(league.total_prize_pool)}</strong></div></div>
+      <div class="facts"><div><span>Dates (UTC)</span><strong>{formatDate(league.start_timestamp)} – {formatDate(league.end_timestamp)}</strong></div><div><span>Prize pool</span><strong>{formatMoney(league.total_prize_pool)}</strong></div><div><span>Status</span><strong>{statusText(league.status)}</strong></div></div>
       {#if normalizeUrl(league.url)}<a class="ext" href={normalizeUrl(league.url)} rel="noopener noreferrer">Tournament website ↗</a>{/if}
     </div>
   </div>
@@ -135,7 +136,7 @@
     </section>
   {/if}
 {/if}
-{#if league}<SourceData kind="league" entityID={id} />{/if}
+{#if league}<ChangeLog entities={["tournament"]} entityID={id} /><SourceData kind="league" entityID={id} />{/if}
 <style>
  .banner { display: flex; gap: 28px; align-items: center; }
  .league-art { width: 210px; aspect-ratio: 1.8; flex-shrink: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }

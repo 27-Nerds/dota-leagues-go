@@ -73,7 +73,7 @@ func (lr *LeagueRepository) GetMissingHistorical(ctx context.Context) ([]int, er
 FOR d IN leagues
  FILTER d.status == 5 || d.end_timestamp < @now
  LET detail = DOCUMENT("league_details", TO_STRING(d.league_id))
- FILTER detail == null || (detail.status != d.status && detail.updated_timestamp < @retryBefore)
+ FILTER detail == null || (detail.status != 5 && detail.status != d.status && detail.updated_timestamp < @retryBefore)
  SORT (d.tier == 5) DESC, d.end_timestamp DESC, d.tier DESC, d.league_id ASC
  LIMIT 100 RETURN d.league_id
 )`, map[string]any{"now": time.Now().Unix(), "retryBefore": time.Now().Add(-24 * time.Hour).Unix()}, &ids)

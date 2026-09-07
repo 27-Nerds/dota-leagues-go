@@ -49,6 +49,34 @@ func TestInteractiveRequestDoesNotWaitBehindBackgroundBacklog(t *testing.T) {
 	})
 }
 
+// Steam lookups run on their own limiter, so a Valve backlog must not delay them.
+func TestSteamRequestIgnoresValveBacklog(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		previous := valveLimiter.Load()
+		defer valveLimiter.Store(previous)
+		previousGate := backgroundRequests
+		backgroundRequests = make(chan struct{}, 1)
+		defer func() { backgroundRequests = previousGate }()
+		valveLimiter.Store(rate.NewLimiter(rate.Every(time.Hour), 1))
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		var workers sync.WaitGroup
+		for range 5 {
+			workers.Go(func() { _ = waitForValve(ctx, false) })
+		}
+		synctest.Wait()
+		start := time.Now()
+		if err := steamLimiter.Load().Wait(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(start); elapsed != 0 {
+			t.Fatalf("steam wait = %s; want no delay from the Valve backlog", elapsed)
+		}
+		cancel()
+		workers.Wait()
+	})
+}
+
 func TestRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

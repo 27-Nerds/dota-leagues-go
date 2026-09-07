@@ -1,11 +1,11 @@
 <script>
   import heroes from "./lib/heroes.js";
   import items from "./lib/items.js";
-  import { steamProfileUrl } from "./lib/constants.js";
+  import { playerHref } from "./lib/constants.js";
   import EntityImage from "./EntityImage.svelte";
   export let p;
   $: hero = p.hero_id ? heroes[p.hero_id] : null;
-  $: profile = steamProfileUrl(p.account_id);
+  $: profile = playerHref(p.account_id);
   $: inventory = Array.from({ length:6 }, (_, index) => Array.isArray(p.items) ? p.items[index] || 0 : 0);
 </script>
 <div class="player-row">

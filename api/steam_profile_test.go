@@ -30,8 +30,11 @@ func TestSteamProfileDecode(t *testing.T) {
 			if tc.name == "public" && (p.Name != "DOG & TIRED" || p.AvatarURL == "" || p.SteamLocation != "Bangladesh") {
 				t.Fatalf("missing name/avatar: %+v", p)
 			}
-			if tc.name == "private with name" && p.SteamLocation != "" {
-				t.Fatal("missing location should remain empty")
+			if tc.name == "private with name" && (p.SteamLocation != "" || p.SteamPrivacy != "private") {
+				t.Fatalf("private profile: location %q privacy %q", p.SteamLocation, p.SteamPrivacy)
+			}
+			if tc.name == "public" && p.SteamPrivacy != "public" {
+				t.Fatalf("missing privacyState should default to public: %q", p.SteamPrivacy)
 			}
 		})
 	}

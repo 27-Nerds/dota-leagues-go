@@ -12,6 +12,7 @@ import (
 var collectionIndexes = map[string][][]string{
 	"league_series":    {{"league_id", "start_time"}, {"start_time"}},
 	"players":          {{"steam_next_refresh_at", "account_id"}},
+	"teams":            {{"members[*].account_id"}},
 	"updates":          {{"created_at", "id"}, {"entity", "entity_id", "group_kind", "created_at", "id"}},
 	"update_groups":    {{"created_at", "id"}, {"entity", "created_at", "id"}},
 	"source_snapshots": {{"kind", "entity_id", "first_seen"}},
@@ -20,7 +21,7 @@ var collectionIndexes = map[string][][]string{
 // EnsureIndexes creates missing collections and indexes without changing records.
 // It is safe to rerun and never drops or replaces an existing index.
 func (a *ArangoDB) EnsureIndexes(ctx context.Context) error {
-	for _, name := range []string{"league_series", "players", "updates", "update_groups", "source_snapshots"} {
+	for _, name := range []string{"league_series", "players", "teams", "updates", "update_groups", "source_snapshots"} {
 		if err := a.ensureCollectionIndexes(ctx, name); err != nil {
 			return err
 		}

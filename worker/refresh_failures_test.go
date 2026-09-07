@@ -4,6 +4,8 @@ import (
 	"context"
 	e "dota_league/error"
 	"dota_league/model"
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -23,6 +25,41 @@ func TestQueuedExistingPlayerSkipsFetchAndInsert(t *testing.T) {
 	loader := &DataLoader{PlayerRepository: p}
 	if err := loader.storeSinglePlayer(t.Context(), 435600912); err != nil || p.checks != 1 {
 		t.Fatal("queued duplicate not skipped", err)
+	}
+}
+
+type concludedLeagueRepo struct {
+	LeagueDetailsRepository
+	writes int
+}
+
+func (concludedLeagueRepo) ExistsByID(context.Context, int) (bool, error) { return true, nil }
+func (concludedLeagueRepo) GetByID(context.Context, int) (*model.LeagueDetails, error) {
+	return &model.LeagueDetails{ID: 7, Status: model.LeagueStatusConcluded, UpdatedTimestamp: time.Now().Add(-30 * 24 * time.Hour).Unix()}, nil
+}
+func (r *concludedLeagueRepo) Update(context.Context, *model.LeagueDetails) error {
+	r.writes++
+	return nil
+}
+func (r *concludedLeagueRepo) Store(context.Context, *model.LeagueDetails) error {
+	r.writes++
+	return nil
+}
+
+// A concluded league never changes again, so a stale timestamp must not trigger an API fetch.
+func TestConcludedLeagueIsNotRefreshed(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ASSET_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "7"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "7", "logo.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo := &concludedLeagueRepo{}
+	loader := &DataLoader{LeagueDetailsRepository: repo}
+	if err := loader.storeLeagueDetails(t.Context(), 7); err != nil || repo.writes != 0 {
+		t.Fatalf("concluded league refreshed: writes=%d err=%v", repo.writes, err)
 	}
 }
 

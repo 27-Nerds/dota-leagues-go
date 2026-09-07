@@ -49,6 +49,26 @@ docker compose -f compose.production.yml --profile https up -d --build --wait
 
 Caddy exposes ports 80/443 and obtains/manages certificates. The domain must resolve correctly and those ports must reach this server. If an existing reverse proxy already handles HTTPS, omit the profile and proxy to `127.0.0.1:1323` instead. Keep SITE_URL set to the public HTTPS origin.
 
+### Cloudflare
+
+When Cloudflare proxies the domain, its DNS answers show Cloudflare addresses. Set the proxied DNS record's origin to your server IP.
+
+The default Caddy configuration works with Cloudflare **Full (strict)** once the origin certificate is issued. If you use **Flexible**, Cloudflare connects to the origin over HTTP, so an origin HTTP-to-HTTPS redirect causes a loop ([Cloudflare explanation](https://developers.cloudflare.com/ssl/troubleshooting/too-many-redirects/)). Set both explicit site addresses in `.env` to serve the app on HTTP and HTTPS:
+
+```dotenv
+SITE_DOMAIN=dota-leagues.27n.gg
+SITE_URL=https://dota-leagues.27n.gg
+CADDY_SITE_ADDRESSES="http://dota-leagues.27n.gg, https://dota-leagues.27n.gg"
+```
+
+Apply proxy changes without restarting the app:
+
+```sh
+docker compose -f compose.production.yml --profile https up -d --no-deps --force-recreate caddy
+```
+
+This keeps the origin HTTP route free of HTTPS redirects while retaining origin TLS. For visitor HTTP-to-HTTPS redirects, use Cloudflare's **Always Use HTTPS** setting. Flexible leaves the Cloudflare-to-origin hop unencrypted; Full (strict) uses and validates the origin's HTTPS certificate. Leave `CADDY_SITE_ADDRESSES` unset for ordinary direct HTTPS hosting, where it defaults to `SITE_DOMAIN` and Caddy redirects HTTP automatically.
+
 ## Persistent data and updates
 
 - `database`: ArangoDB records.
@@ -82,22 +102,23 @@ docker compose -f compose.production.yml run --rm --no-deps app -production -cre
 
 The maintenance container inherits the app's database credentials and network, needs no published database port, and exits when indexes are ready. It starts neither HTTP nor collectors. A failed operation exits nonzero; rerun after resolving the error. For a large existing database, run this command before bringing up the app so index creation does not delay its health check.
 
-The definitions in [`db/indexes.go`](../db/indexes.go) cover eight indexes (field order matters):
+The definitions in [`db/indexes.go`](../db/indexes.go) cover nine indexes (field order matters):
 
 | Collection | Indexed fields |
 | --- | --- |
 | `league_series` | `league_id, start_time` |
 | `league_series` | `start_time` |
 | `players` | `steam_next_refresh_at, account_id` |
+| `teams` | `members[*].account_id` (array index for roster lookups from player pages) |
 | `updates` | `created_at, id` |
 | `updates` | `entity, entity_id, group_kind, created_at, id` |
 | `update_groups` | `created_at, id` |
 | `update_groups` | `entity, created_at, id` |
 | `source_snapshots` | `kind, entity_id, first_seen` |
 
-All eight application indexes are non-unique and non-sparse. ArangoDB's built-in primary indexes are retained. Background index creation reduces write-lock duration but the command still waits for completion ([ArangoDB indexing documentation](https://docs.arango.ai/arangodb/stable/indexes-and-search/indexing/basics/)).
+All nine application indexes are non-unique and non-sparse. ArangoDB's built-in primary indexes are retained. Background index creation reduces write-lock duration but the command still waits for completion ([ArangoDB indexing documentation](https://docs.arango.ai/arangodb/stable/indexes-and-search/indexing/basics/)).
 
-Successful logs contain `database index ready` with the collection, fields, and `created=true` for a new index or `created=false` for an existing one. A repeat run should reuse all eight indexes. The command creates missing indexed collections, but does not initialize unrelated collections or populate application data. Continue with the normal `up -d --build --wait` command after maintenance (include `--profile https` when using Caddy).
+Successful logs contain `database index ready` with the collection, fields, and `created=true` for a new index or `created=false` for an existing one. A repeat run should reuse all nine indexes. The command creates missing indexed collections, but does not initialize unrelated collections or populate application data. Continue with the normal `up -d --build --wait` command after maintenance (include `--profile https` when using Caddy).
 
 Outside Docker, run `go run . -create-indexes` (development configuration) or `go run . -production -create-indexes` from the repository root. Both require `config.json` and accept the same `DOTA_DEVELOPMENT_*` or `DOTA_PRODUCTION_*` environment overrides as the server. Compose loads `.env` for containers; a direct `go run` does not load that file automatically.
 
@@ -105,6 +126,6 @@ The Python script is an optional [query-plan inspection tool](../README.md#inspe
 
 ## Runtime configuration
 
-Compose passes environment overrides to Viper as `DOTA_PRODUCTION_*`, for example `DOTA_PRODUCTION_DATABASE_URL` and `DOTA_PRODUCTION_VALVE_RPS`. `.env` and the existing `config.json` are excluded from Docker builds. The image contains only `config.json.example` defaults; credentials are supplied at runtime. `GA_MEASUREMENT_ID` is optional. Restart/recreate the app after configuration changes.
+Compose passes environment overrides to Viper as `DOTA_PRODUCTION_*`, for example `DOTA_PRODUCTION_DATABASE_URL`, `DOTA_PRODUCTION_VALVE_RPS`, and `DOTA_PRODUCTION_STEAM_RPS` (Steam Community profile lookups are paced independently of the Valve API). `.env` and the existing `config.json` are excluded from Docker builds. The image contains only `config.json.example` defaults; credentials are supplied at runtime. `GA_MEASUREMENT_ID` is optional. Restart/recreate the app after configuration changes.
 
 Before release, verify `/`, `/robots.txt`, `/sitemap.xml`, a real team/league/match page, and the canonical origin. Submit the sitemap and inspect representative URLs in Search Console after deployment.

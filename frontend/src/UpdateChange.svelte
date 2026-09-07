@@ -1,12 +1,13 @@
 <script>
   import { fieldLabel, updateValue, rosterChanges } from './lib/updates.js';
+  import { playerHref } from './lib/constants.js';
   let { change } = $props();
   let members = $derived(change.field === 'members' ? rosterChanges(change.before, change.after) : []);
 </script>
 {#if change.field === 'members'}
   <ul class="members" aria-label="Roster changes">
     {#each members as member}
-      <li><span class="change-kind" class:removed={member.kind === 'left' || member.kind === 'deactivated'}>{member.label}</span><strong>Account #{member.id}</strong><span class="member-status">{member.status}</span></li>
+      <li><span class="change-kind" class:removed={member.kind === 'left' || member.kind === 'deactivated'}>{member.label}</span><strong>{#if playerHref(member.id)}<a href={playerHref(member.id)}>Account #{member.id}</a>{:else}Account #{member.id}{/if}</strong><span class="member-status">{member.status}</span></li>
     {:else}<li>No membership or active-status changes.</li>{/each}
   </ul>
 {:else}

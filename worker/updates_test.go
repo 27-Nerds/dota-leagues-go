@@ -36,6 +36,34 @@ func TestUpdatesIgnoreRefreshMetadata(t *testing.T) {
 	}
 }
 
+func TestPlayerProfileChangesRecordTeamMovesAndIdentity(t *testing.T) {
+	store := &capturedUpdates{}
+	dl := &DataLoader{Updates: store}
+	before := &model.Player{ID: 5, Name: "Fallback", ProfileSource: "steam", SteamName: "Fallback", SteamNextRefreshAt: 1}
+	after := &model.Player{ID: 5, Name: "Pro", TeamID: 7, TeamName: "Team A", IsPro: true, TotalEarnings: 100, SteamNextRefreshAt: 2}
+	dl.recordUpdate(t.Context(), "player", after.ID, after.Name, playerSnapshot(before), playerSnapshot(after))
+	moved := *after
+	moved.TeamID, moved.TeamName = 8, ""
+	dl.recordUpdate(t.Context(), "player", moved.ID, moved.Name, playerSnapshot(after), playerSnapshot(&moved))
+	dl.recordUpdate(t.Context(), "player", moved.ID, moved.Name, playerSnapshot(&moved), playerSnapshot(&moved))
+	if len(store.rows) != 2 || store.rows[0].URL != "/player/5" {
+		t.Fatalf("unexpected events: %+v", store.rows)
+	}
+	fields := map[string]model.UpdateChange{}
+	for _, c := range store.rows[0].Changes {
+		fields[c.Field] = c
+	}
+	if fields["name"].After != "Pro" || fields["team"].After != "Team A" || fields["is_pro"].After != true || fields["total_earnings"].After != 100 {
+		t.Fatalf("identity changes missing: %+v", store.rows[0].Changes)
+	}
+	if _, refresh := fields["steam_next_refresh_at"]; refresh {
+		t.Fatal("refresh bookkeeping leaked into the feed")
+	}
+	if store.rows[1].Changes[0].Field != "team" || store.rows[1].Changes[0].After != "Team #8" {
+		t.Fatalf("team move without a stored name should fall back to the ID: %+v", store.rows[1].Changes)
+	}
+}
+
 type rosterStore struct {
 	TeamRosterRepository
 	stored *model.TeamRoster

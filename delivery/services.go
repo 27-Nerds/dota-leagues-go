@@ -21,6 +21,12 @@ type TeamsService interface {
 	GetByID(ctx context.Context, id string) (*model.Team, error)
 }
 
+// PlayersService supplies the data required by HTTP endpoints.
+type PlayersService interface {
+	GetByID(ctx context.Context, id string) (*model.Player, error)
+	GetSitemapPlayers(ctx context.Context, offset, limit int) ([]int, int64, error)
+}
+
 // LeaguesService supplies the data required by HTTP endpoints.
 type LeaguesService interface {
 	GetAll(ctx context.Context, offset int, limit int, filter model.LeagueFilter) ([]model.LeagueDetails, int64, error)

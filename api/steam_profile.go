@@ -26,14 +26,14 @@ func loadPlayerWithFallback(ctx context.Context, id int, dpc, steam func(context
 	return player, err
 }
 
-// LoadSteamPlayer reads the token-free Community XML endpoint, sharing the Valve rate limit.
+// LoadSteamPlayer reads the token-free Community XML endpoint under the separate Steam rate limit.
 func LoadSteamPlayer(ctx context.Context, id int) (*model.Player, error) {
 	const op = "api.LoadSteamPlayer"
 	if id <= 0 || uint64(id) > 4294967295 {
 		return nil, &e.Error{Op: op, Code: e.EINVALID, Message: "invalid account ID"}
 	}
 	steamID := strconv.FormatUint(76561197960265728+uint64(id), 10)
-	body, err := doRequest(ctx, "https://steamcommunity.com/profiles/"+steamID+"/?xml=1")
+	body, err := doSteamRequest(ctx, "https://steamcommunity.com/profiles/"+steamID+"/?xml=1")
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +50,7 @@ func decodeSteamPlayer(body io.Reader, id int, steamID string) (*model.Player, e
 		Name     string `xml:"steamID"`
 		Avatar   string `xml:"avatarFull"`
 		Location string `xml:"location"`
+		Privacy  string `xml:"privacyState"`
 	}
 	if err := xml.NewDecoder(body).Decode(&profile); err != nil {
 		return nil, &e.Error{Op: op, Code: e.EINVALID, Err: err}
@@ -68,5 +69,9 @@ func decodeSteamPlayer(body io.Reader, id int, steamID string) (*model.Player, e
 	if u, err := url.Parse(profile.Avatar); err == nil && u.Scheme == "https" && u.User == nil && (strings.HasSuffix(u.Hostname(), ".steamstatic.com") || strings.HasSuffix(u.Hostname(), ".steamcommunity.com")) {
 		avatar = u.String()
 	}
-	return &model.Player{SteamName: name, SteamUpdatedAt: time.Now().UnixMilli(), SteamNextRefreshAt: time.Now().Add(24 * time.Hour).UnixMilli(), SteamStatus: "ok", ID: id, Name: name, AvatarURL: avatar, SteamLocation: strings.TrimSpace(profile.Location), ProfileSource: "steam", ProfileCheckedAt: time.Now().UnixMilli()}, nil
+	privacy := strings.ToLower(strings.TrimSpace(profile.Privacy))
+	if privacy == "" {
+		privacy = "public"
+	}
+	return &model.Player{SteamName: name, SteamPrivacy: privacy, SteamUpdatedAt: time.Now().UnixMilli(), SteamNextRefreshAt: time.Now().Add(24 * time.Hour).UnixMilli(), SteamStatus: "ok", ID: id, Name: name, AvatarURL: avatar, SteamLocation: strings.TrimSpace(profile.Location), ProfileSource: "steam", ProfileCheckedAt: time.Now().UnixMilli()}, nil
 }

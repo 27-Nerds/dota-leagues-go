@@ -1,11 +1,12 @@
 <script>
   import PlayerAvatar from "./PlayerAvatar.svelte";
   import SourceData from "./SourceData.svelte";
+  import ChangeLog from "./ChangeLog.svelte";
   import Breadcrumbs from "./Breadcrumbs.svelte";
   import { onMount } from "svelte";
   import heroes from "./lib/heroes.js";
   import { api } from "./lib/api.js";
-  import { formatDate, regionText, countryText, steamProfileUrl, teamLogo, normalizeUrl } from "./lib/constants.js";
+  import { formatDate, regionText, countryText, playerHref, teamLogo, normalizeUrl } from "./lib/constants.js";
   import StatePanel from "./StatePanel.svelte";
   import EntityImage from "./EntityImage.svelte";
   export let id;
@@ -74,7 +75,7 @@
       <div class="table-scroll" role="region" aria-label="Team roster" tabindex="0"><table>
         <thead><tr><th scope="col">Player</th>{#if hasSteamLocation}<th scope="col" title="Self-reported location on Steam">Steam location</th>{/if}<th scope="col">Joined</th><th scope="col">Top hero</th><th scope="col" class="num">Average K / D / A</th></tr></thead>
         <tbody>{#each members as m}
-          <tr><td><div class="roster-player"><PlayerAvatar src={m.avatar_url} /><div class="roster-player-name">{#if steamProfileUrl(m.account_id)}<a href={steamProfileUrl(m.account_id)}>{m.pro_name || m.player_name || `Player #${m.account_id}`}</a>{:else}{m.pro_name || m.player_name || "Unknown player"}{/if}{#if m.admin}<span class="admin">Team admin</span>{/if}{#if m.real_name?.trim()}<span class="real-name">{m.real_name}</span>{/if}</div></div></td>
+          <tr><td><div class="roster-player"><PlayerAvatar src={m.avatar_url} /><div class="roster-player-name">{#if playerHref(m.account_id)}<a href={playerHref(m.account_id)}>{m.pro_name || m.player_name || `Player #${m.account_id}`}</a>{:else}{m.pro_name || m.player_name || "Unknown player"}{/if}{#if m.admin}<span class="admin">Team admin</span>{/if}{#if m.real_name?.trim()}<span class="real-name">{m.real_name}</span>{/if}</div></div></td>
             {#if hasSteamLocation}<td class="steam-location">{m.steam_location?.trim() || "—"}</td>{/if}
             <td>{formatDate(m.time_joined)}</td>
             <td>{#if m.stat?.top_heroes?.[0]}{heroes[m.stat.top_heroes[0].hero_id]?.name || `Hero #${m.stat.top_heroes[0].hero_id}`} ({number(m.stat.top_heroes[0].picks)}){:else}—{/if}</td>
@@ -94,7 +95,7 @@
     {:else}<StatePanel title="No DPC history available" message="There are no recorded DPC tournament results for this team." />{/if}
   </section>
 {/if}
-{#if team}<SourceData kind="team" entityID={id} />{/if}
+{#if team}<ChangeLog entities={["team", "roster"]} entityID={id} /><SourceData kind="team" entityID={id} />{/if}
 <style>
   .team-header { margin: 1.5rem 0 2rem; }
   .identity { display: flex; align-items: center; gap: 1.75rem; }

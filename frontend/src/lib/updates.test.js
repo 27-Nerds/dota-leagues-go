@@ -28,7 +28,7 @@ test('every entity has a creation presentation and only existing internal routes
     const view = updatePresentation({entity,entity_id:7,action:'created',changes:[],url:'javascript:alert(1)'});
     assert.match(view.title, /added$/);
     assert.equal(view.changes.length, 0);
-    assert.equal(view.href, entity === 'tournament' ? '/league/7' : entity === 'player' ? null : '/team/7');
+    assert.equal(view.href, entity === 'tournament' ? '/league/7' : entity === 'player' ? '/player/7' : '/team/7');
     assert.ok(view.note);
   }
   assert.equal(updatePresentation({entity:'team',entity_id:'//evil.test'}).href, null);
@@ -77,6 +77,46 @@ test('roster summaries infer replacements, rebuilds and possible disbands conser
   assert.equal(roster({1:true,2:true,3:true,4:true,5:true},{6:true}), 'Roster updated');
   assert.equal(roster({}, {1:true,2:true,3:true,4:true,5:true},{action:'created'}), 'Roster added');
   assert.equal(roster({1:true},{1:false,2:true}), 'Player replaced');
+});
+test('tournament status transitions receive lifecycle titles', () => {
+  const status = (before, after, extra = []) => updatePresentation({entity:'tournament',action:'updated',changes:[{field:'status',before,after},...extra]});
+  assert.equal(status(3, 5).title, 'Tournament concluded');
+  assert.equal(status(3, 5).icon, 'flag');
+  assert.equal(status(2, 3).title, 'Tournament approved');
+  assert.equal(status(2, 4).title, 'Tournament rejected');
+  assert.equal(status(3, 6).title, 'Tournament deleted');
+  assert.equal(status(0, 2).title, 'Tournament status changed');
+  assert.equal(status(3, 5, [{field:'end_timestamp'}]).title, 'Tournament concluded');
+  assert.equal(updatePresentation({entity:'tournament',changes:[{field:'status',before:3,after:3},{field:'url'}]}).title, 'Tournament updated');
+});
+test('player changes describe team moves, privacy flips, and identity updates', () => {
+  const title = changes => updatePresentation({entity:'player',action:'updated',changes}).title;
+  assert.equal(title([{field:'team_id',before:0,after:7},{field:'team',before:'',after:'Team A'}]), 'Player joined team');
+  assert.equal(title([{field:'team_id',before:7,after:0},{field:'team',before:'Team A',after:''}]), 'Player left team');
+  assert.equal(title([{field:'team_id',before:7,after:8},{field:'team',before:'Team A',after:'Team B'}]), 'Player transferred');
+  assert.equal(title([{field:'steam_profile',before:'public',after:'private'}]), 'Steam profile private');
+  assert.equal(title([{field:'steam_profile',before:'private',after:'public'}]), 'Steam profile public');
+  assert.equal(title([{field:'steam_profile',before:'public',after:'unavailable'}]), 'Steam profile unavailable');
+  assert.equal(title([{field:'is_pro',before:false,after:true},{field:'name',before:'x',after:'y'}]), 'Pro profile added');
+  assert.equal(title([{field:'name',before:'x',after:'y'}]), 'Player renamed');
+  assert.equal(title([{field:'total_earnings',before:1,after:2}]), 'Earnings updated');
+  assert.equal(title([{field:'steam_location',before:'a',after:'b'}]), 'Steam profile updated');
+  assert.equal(title([{field:'sponsor',before:'a',after:'b'}]), 'Player updated');
+  assert.equal(updateValue('steam_profile', 'friendsonly'), 'Friends only');
+  assert.equal(updateValue('fantasy_role', 2), 'Support');
+  assert.equal(updateValue('total_earnings', 1500), '$1,500');
+  assert.equal(parsePath('/player/42').name, 'player');
+  assert.equal(parsePath('/player/0').name, 'notFound');
+});
+test('steam state keeps last public data visible after a profile goes private', async () => {
+  const { steamState, playerDisplayName } = await import('./players.js');
+  assert.deepEqual(steamState({}), {kind:'unchecked',label:'Not checked yet',hasData:false});
+  assert.deepEqual(steamState({steam_name:'n',steam_status:'ok',steam_privacy:'public'}), {kind:'public',label:'Public',hasData:true});
+  assert.deepEqual(steamState({steam_name:'n',steam_status:'ok',steam_privacy:'private'}), {kind:'private',label:'Private',hasData:true});
+  assert.deepEqual(steamState({steam_name:'n',steam_status:'unavailable'}), {kind:'unavailable',label:'Unavailable',hasData:true});
+  assert.deepEqual(steamState({steam_status:'request_failed'}), {kind:'unknown',label:'Check failed',hasData:false});
+  assert.equal(playerDisplayName({name:' ',steam_name:'Steam'}, 3), 'Steam');
+  assert.equal(playerDisplayName(null, 3), 'Player #3');
 });
 test('related field changes receive meaningful titles', () => {
   assert.equal(updatePresentation({entity:'team',changes:[{field:'name'},{field:'tag'}]}).title,'Team rebranded');

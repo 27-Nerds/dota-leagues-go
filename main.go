@@ -61,6 +61,7 @@ func init() {
 	//set default values
 	viper.SetDefault("cors.origin", "*")
 	viper.SetDefault("valve.rps", 1.5)
+	viper.SetDefault("steam.rps", 1.0)
 
 	//read the cofig file
 	viper.SetConfigFile(`config.json`)
@@ -133,6 +134,7 @@ func run() error {
 	}
 	api.SetSourceRecorder(sourcesRepository)
 	api.SetValveRateLimit(GetConfigFloat(`valve.rps`))
+	api.SetSteamRateLimit(GetConfigFloat(`steam.rps`))
 
 	loader := worker.NewDataLoader(
 		ctx,
@@ -182,12 +184,14 @@ func run() error {
 	leaguesHandler := handler.NewLeaguesHandler(leagueDetailsRepository, leagueSeriesRepository)
 	gamesHandler := handler.NewGameHandler(gameRepository)
 	teamsHandler := handler.NewTeamsHandler(teamRepository)
+	playersHandler := handler.NewPlayersHandler(playerRepository)
 	dpcHandler := handler.NewDPCHandler(dpcStandingsRepository, api.LoadDPCStandings)
 	dpcResultsHandler := handler.NewDPCResultsHandler(dpcResultsRepository, api.LoadDPCLeagueResults)
 	matchMinimalHandler := handler.NewMatchMinimalHandler(matchMinimalRepository, playerRepository, api.LoadMatchMinimal)
 
 	delivery.NewLeaguesDelivery(e, leaguesHandler, gamesHandler)
 	delivery.NewTeamsDelivery(e, teamsHandler)
+	delivery.NewPlayersDelivery(e, playersHandler)
 	updatesHandler := handler.NewUpdatesHandler(updatesRepository)
 	delivery.NewUpdatesDelivery(e, updatesHandler)
 	delivery.NewSourceDelivery(e, sourcesRepository)
@@ -197,7 +201,7 @@ func run() error {
 	if siteURL == "" {
 		siteURL = "https://dota-leagues.27n.gg"
 	}
-	if err := delivery.NewPagesDelivery(e, leaguesHandler, teamsHandler, matchMinimalHandler, dpcHandler, updatesHandler, leagueSeriesRepository, "./public/index.html", siteURL, os.Getenv("GA_MEASUREMENT_ID")); err != nil {
+	if err := delivery.NewPagesDelivery(e, leaguesHandler, teamsHandler, playersHandler, matchMinimalHandler, dpcHandler, updatesHandler, leagueSeriesRepository, "./public/index.html", siteURL, os.Getenv("GA_MEASUREMENT_ID")); err != nil {
 		return fmt.Errorf("configure page routes: %w", err)
 	}
 

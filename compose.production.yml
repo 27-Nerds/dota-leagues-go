@@ -17,6 +17,7 @@ services:
       DOTA_PRODUCTION_SERVER_ADDRESS: :1323
       DOTA_PRODUCTION_CORS_ORIGIN: ${SITE_URL:-http://localhost:1323}
       DOTA_PRODUCTION_VALVE_RPS: ${VALVE_RPS:-1.0}
+      DOTA_PRODUCTION_STEAM_RPS: ${STEAM_RPS:-1.0}
       ASSET_DIR: /data
     volumes:
       - logos:/data
@@ -56,7 +57,7 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+      CADDY_SITE_ADDRESSES: ${CADDY_SITE_ADDRESSES:-${SITE_DOMAIN:-localhost}}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

@@ -120,7 +120,8 @@ func (dl *DataLoader) performHistoricalLeaguesUpdate(ctx context.Context) error 
 }
 
 // storeLeagueDetails gets data from api and stores it into DB (upsert + series refresh).
-// Records refreshed within detailsRefreshInterval are skipped to spare the Valve API.
+// Records refreshed within detailsRefreshInterval, and leagues already stored as
+// concluded, are skipped to spare the Valve API.
 func (dl *DataLoader) storeLeagueDetails(ctx context.Context, leagueID int) error {
 	exist, err := dl.LeagueDetailsRepository.ExistsByID(ctx, leagueID)
 	if err != nil {
@@ -134,7 +135,8 @@ func (dl *DataLoader) storeLeagueDetails(ctx context.Context, leagueID int) erro
 		switch {
 		case gerr != nil:
 			return gerr
-		case time.Since(time.Unix(stored.UpdatedTimestamp, 0)) < detailsRefreshInterval:
+		case stored.Status == model.LeagueStatusConcluded,
+			time.Since(time.Unix(stored.UpdatedTimestamp, 0)) < detailsRefreshInterval:
 			// A successful metadata refresh does not imply the logo downloaded.
 			return dl.downloadLeagueImage(ctx, leagueID)
 		}

@@ -9,6 +9,7 @@ export function parsePath(pathname) {
   if (parts.length === 2 && id.test(parts[1])) {
     if (parts[0] === 'league') return { name: 'league', id: parts[1] };
     if (parts[0] === 'team') return { name: 'team', id: parts[1] };
+    if (parts[0] === 'player') return { name: 'player', id: parts[1] };
   }
   if (parts.length === 3 && parts[0] === 'match' && id.test(parts[1]) && id.test(parts[2])) {
     return { name: 'match', leagueId: parts[1], matchId: parts[2] };

@@ -93,4 +93,13 @@ func TestLeagueArchiveViews(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(ids, []int{11}) {
 		t.Fatalf("finished records must not be requeued: %v %v", ids, err)
 	}
+	// A concluded detail record is final even when the catalogue still reports another status.
+	base[0].Status = 3
+	if err := leagues.StoreAll(ctx, base[:1]); err != nil {
+		t.Fatal(err)
+	}
+	ids, err = leagues.GetMissingHistorical(ctx)
+	if err != nil || !reflect.DeepEqual(ids, []int{11}) {
+		t.Fatalf("concluded records must not be requeued on catalogue drift: %v %v", ids, err)
+	}
 }

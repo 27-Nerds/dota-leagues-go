@@ -19,6 +19,8 @@ type PlayerRepository interface {
 	SaveSteamEnrichment(context.Context, int, *model.Player, time.Time, string) error
 	NeedsProfileRefresh(context.Context, int, time.Time) (bool, error)
 	SaveProfile(context.Context, *model.Player) (bool, error)
+	GetByID(ctx context.Context, id int) (*model.Player, error)
+	GetProfiles(ctx context.Context, ids []int) (map[int]model.Player, error)
 	Store(context.Context, *model.Player) error
 	StoreAll(context.Context, []model.Player) error
 	ExistsByID(ctx context.Context, id int) (bool, error)

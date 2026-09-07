@@ -67,6 +67,10 @@ type LeagueSeries struct {
 	DBKey      string   `json:"_key,omitempty"`
 }
 
+// LeagueStatusConcluded is the ELeagueStatus value Valve assigns once a league has ended.
+// Concluded leagues receive no further changes and are not refreshed from the API.
+const LeagueStatusConcluded = 5
+
 // LeagueDetails - details about the league model
 type LeagueDetails struct {
 	ID                 int      `json:"league_id"`

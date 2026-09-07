@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"dota_league/db"
 	e "dota_league/error"
 	"dota_league/model"
 	"strconv"
 	"time"
+
+	"github.com/arangodb/go-driver/v2/arangodb/shared"
 )
 
 // PlayerRepository repository object
@@ -83,6 +86,100 @@ func (pr *PlayerRepository) HasAnyRecord(ctx context.Context) (bool, error) {
 	return exists, nil
 }
 
+// GetByID returns one profile with its team and tournament names joined for display.
+func (pr *PlayerRepository) GetByID(ctx context.Context, id int) (*model.Player, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	var player model.Player
+	_, err := pr.Conn.Query(ctx, `LET p = DOCUMENT("players", @id)
+FILTER p != null
+LET team = p.team_id > 0 ? DOCUMENT("teams", TO_STRING(p.team_id)) : null
+LET results = (
+ FOR r IN (IS_ARRAY(p.results) ? p.results : [])
+ LET details = DOCUMENT("league_details", TO_STRING(r.league_id))
+ LET league = DOCUMENT("leagues", TO_STRING(r.league_id))
+ RETURN MERGE(r, {
+  league_name: details.name != null && details.name != "" ? details.name : league.name,
+  league_available: details != null && details.league_id > 0
+ })
+)
+LET roster = FIRST(
+ FOR t IN teams
+ FILTER @account IN t.members[*].account_id
+ FOR m IN t.members FILTER m.account_id == @account
+ SORT m.time_joined DESC, t.team_id DESC LIMIT 1
+ RETURN {id: t.team_id, name: t.name, tag: t.tag, joined_at: m.time_joined}
+)
+RETURN MERGE(p, {
+ team_name: team.name != null && team.name != "" ? team.name : p.team_name,
+ team_tag: team.tag != null && team.tag != "" ? team.tag : p.team_tag,
+ team_available: team != null && team.team_id > 0,
+ roster_team: roster != null && roster.id > 0 ? roster : null,
+ results
+})`, map[string]any{"id": strconv.Itoa(id), "account": id}, &player)
+	if err != nil {
+		return nil, &e.Error{Op: "PlayerRepository.GetByID", Err: err}
+	}
+	return &player, nil
+}
+
+// GetProfiles returns the stored documents for the requested IDs; missing players are omitted.
+func (pr *PlayerRepository) GetProfiles(ctx context.Context, ids []int) (map[int]model.Player, error) {
+	players := make(map[int]model.Player, len(ids))
+	if len(ids) == 0 {
+		return players, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	cursor, err := pr.Conn.QueryAll(ctx, `FOR id IN @ids
+ LET p = DOCUMENT("players", TO_STRING(id))
+ FILTER p != null RETURN p`, map[string]any{"ids": ids}, false)
+	if shared.IsNotFound(err) || e.IsNotFound(err) {
+		return players, nil
+	}
+	if err != nil {
+		return nil, &e.Error{Op: "PlayerRepository.GetProfiles", Err: err}
+	}
+	defer db.CloseCursor(cursor)
+	for {
+		var player model.Player
+		if _, err := cursor.ReadDocument(ctx, &player); shared.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			return nil, &e.Error{Op: "PlayerRepository.GetProfiles", Err: err}
+		}
+		players[player.ID] = player
+	}
+	return players, nil
+}
+
+// GetSitemapPlayers lists professional player IDs in a stable order for sitemap pages.
+func (pr *PlayerRepository) GetSitemapPlayers(ctx context.Context, offset, limit int) ([]int, int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	cursor, err := pr.Conn.QueryAll(ctx, `FOR p IN players
+ FILTER p.is_pro == true && p.account_id > 0
+ SORT p.account_id ASC LIMIT @offset, @limit RETURN p.account_id`, map[string]any{"offset": offset, "limit": limit}, true)
+	if shared.IsNotFound(err) || e.IsNotFound(err) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, &e.Error{Op: "PlayerRepository.GetSitemapPlayers", Err: err}
+	}
+	defer db.CloseCursor(cursor)
+	ids := []int{}
+	for {
+		var id int
+		if _, err := cursor.ReadDocument(ctx, &id); shared.IsNoMoreDocuments(err) {
+			break
+		} else if err != nil {
+			return nil, 0, &e.Error{Op: "PlayerRepository.GetSitemapPlayers", Err: err}
+		}
+		ids = append(ids, id)
+	}
+	return ids, int64(cursor.Statistics().FullCountInt), nil
+}
+
 // GetNames resolves only the requested profiles using their indexed document keys.
 func (pr *PlayerRepository) GetNames(ctx context.Context, ids []int) (map[int]string, error) {
 	names := make(map[int]string)
@@ -123,8 +220,10 @@ func (pr *PlayerRepository) NeedsProfileRefresh(ctx context.Context, id int, now
 	return due, err
 }
 
-// SaveProfile atomically inserts or replaces only a Steam fallback. A concurrent
-// Steam lookup can never overwrite a DPC profile. Return whether this is a new player.
+// SaveProfile atomically inserts a player or replaces the stored identity. A DPC
+// profile always refreshes the record; a Steam fallback replaces only another
+// Steam fallback, so a concurrent Steam lookup can never overwrite a DPC profile.
+// Steam enrichment fields survive either replacement. Return whether this is a new player.
 func (pr *PlayerRepository) SaveProfile(ctx context.Context, player *model.Player) (bool, error) {
 	if err := pr.Store(ctx, player); err == nil {
 		return true, nil
@@ -133,8 +232,8 @@ func (pr *PlayerRepository) SaveProfile(ctx context.Context, player *model.Playe
 	}
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
-	err := pr.Conn.DoQueryBuilder(ctx, `FOR p IN players FILTER p._key == @key && p.profile_source == "steam"
- REPLACE p WITH MERGE(KEEP(p, "steam_name", "steam_location", "avatar_url", "steam_updated_at", "steam_next_refresh_at", "steam_status"), @player) IN players`, map[string]any{"key": player.DBKey, "player": player})
+	err := pr.Conn.DoQueryBuilder(ctx, `FOR p IN players FILTER p._key == @key && (p.profile_source == "steam" || @source != "steam")
+ REPLACE p WITH MERGE(KEEP(p, "steam_name", "steam_location", "avatar_url", "steam_updated_at", "steam_next_refresh_at", "steam_status", "steam_privacy", "steam_checked_at", "steam_public_at"), @player) IN players`, map[string]any{"key": player.DBKey, "player": player, "source": player.ProfileSource})
 	return false, err
 }
 
@@ -162,12 +261,19 @@ func (pr *PlayerRepository) SaveSteamEnrichment(ctx context.Context, id int, pro
 	if status == "request_failed" {
 		delay = time.Hour
 	}
-	patch := map[string]any{"steam_next_refresh_at": now.Add(delay).UnixMilli(), "steam_status": status}
+	patch := map[string]any{"steam_next_refresh_at": now.Add(delay).UnixMilli(), "steam_status": status, "steam_checked_at": now.UnixMilli()}
 	if profile != nil {
 		patch["steam_name"] = profile.Name
-		patch["steam_location"] = profile.SteamLocation
 		patch["avatar_url"] = profile.AvatarURL
 		patch["steam_updated_at"] = now.UnixMilli()
+		patch["steam_privacy"] = profile.SteamPrivacy
+		// A private profile hides its location; keep the last public value instead of blanking it.
+		if profile.SteamLocation != "" || profile.SteamPrivacy == "" || profile.SteamPrivacy == "public" {
+			patch["steam_location"] = profile.SteamLocation
+		}
+		if profile.SteamPrivacy == "" || profile.SteamPrivacy == "public" {
+			patch["steam_public_at"] = now.UnixMilli()
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()

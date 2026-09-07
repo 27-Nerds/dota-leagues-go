@@ -28,7 +28,7 @@
               {#if view.transition.left}<span class="out" aria-label={`${view.transition.left} players left`}>−{view.transition.left}</span>{/if}
               {#if view.transition.joined}<span class="in" aria-label={`${view.transition.joined} players joined`}>+{view.transition.joined}</span>{/if}
             </span>
-          {:else if update.entity !== 'roster' && view.changes.every(c => ['wins','losses','total_prize_pool'].includes(c.field))}
+          {:else if update.entity !== 'roster' && view.changes.every(c => ['wins','losses','total_prize_pool','status','total_earnings','steam_profile'].includes(c.field))}
             <span class="value-summary">{updateSummary(update)}</span>
           {/if}
           <span class="disclosure" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m5 6 3 3 3-3" /></svg></span>

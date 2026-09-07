@@ -1,4 +1,4 @@
-import { countryText, formatDateTime, formatMoney, LEAGUE_STATUS, REGIONS, TIERS } from './constants.js';
+import { countryText, fantasyRoleText, formatDateTime, formatMoney, LEAGUE_STATUS, REGIONS, TIERS } from './constants.js';
 
 export const UPDATE_PAGE_SIZE = 20;
 const entities = { tournament: 'Tournament', team: 'Team', roster: 'Roster', player: 'Player' };
@@ -6,12 +6,17 @@ const labels = {
   name: 'Name', tag: 'Team tag', region: 'Region', country_code: 'Country', url: 'Website',
   url_logo: 'Logo URL', wins: 'Wins', losses: 'Losses', team_captain: 'Captain', tier: 'Tier',
   start_timestamp: 'Starts (UTC)', end_timestamp: 'Ends (UTC)', status: 'Status',
-  total_prize_pool: 'Prize pool', description: 'Description', members: 'Roster members', admins: 'Administrators'
+  total_prize_pool: 'Prize pool', description: 'Description', members: 'Roster members', admins: 'Administrators',
+  real_name: 'Real name', team: 'Team', team_id: 'Team ID', fantasy_role: 'Role', is_pro: 'Professional', sponsor: 'Sponsor',
+  total_earnings: 'Earnings', steam_name: 'Steam name', steam_location: 'Steam location', steam_profile: 'Steam profile'
 };
+const steamProfileLabels = { public: 'Public', private: 'Private', friendsonly: 'Friends only', unavailable: 'Unavailable' };
 export function fieldLabel(field) { return labels[field] || String(field || 'Details').replaceAll('_', ' '); }
 export function updateValue(field, value) {
   if (value === null || value === undefined || value === '') return 'Not set';
-  if (field === 'total_prize_pool') return formatMoney(value);
+  if (field === 'total_prize_pool' || field === 'total_earnings') return formatMoney(value);
+  if (field === 'fantasy_role') return fantasyRoleText(value) || `Role ${value}`;
+  if (field === 'steam_profile') return steamProfileLabels[value] || String(value);
   if (field === 'region') return REGIONS[value] || `Region ${value}`;
   if (field === 'tier') return TIERS[value] || `Tier ${value}`;
   if (field === 'status') return LEAGUE_STATUS[value] || `Status ${value}`;
@@ -55,6 +60,35 @@ export function rosterTransition(update) {
   else if (left.length && !joined.length) title = left.length === 1 ? 'Player left' : 'Players left';
   return { title, left: left.length, joined: joined.length };
 }
+// ELeagueStatus lifecycle: 0 Not set, 1 Unsubmitted, 2 Submitted, 3 Accepted, 4 Rejected, 5 Concluded, 6 Deleted.
+const statusTitles = { 3: 'Tournament approved', 4: 'Tournament rejected', 5: 'Tournament concluded', 6: 'Tournament deleted' };
+export function tournamentStatusTitle(changes) {
+  const change = changes.find(c => c.field === 'status');
+  if (!change || change.before === change.after) return null;
+  return statusTitles[change.after] || 'Tournament status changed';
+}
+const fieldsOnly = (changes, allowed) => changes.length > 0 && changes.every(c => allowed.includes(c.field));
+export function playerChangeTitle(changes) {
+  const team = changes.find(c => c.field === 'team_id');
+  if (team) {
+    const before = Number(team.before) > 0, after = Number(team.after) > 0;
+    if (before && after) return 'Player transferred';
+    if (after) return 'Player joined team';
+    if (before) return 'Player left team';
+  }
+  const steam = changes.find(c => c.field === 'steam_profile');
+  if (steam) {
+    if (steam.after === 'public') return 'Steam profile public';
+    if (steam.after === 'unavailable') return 'Steam profile unavailable';
+    if (steam.after) return 'Steam profile private';
+  }
+  const pro = changes.find(c => c.field === 'is_pro');
+  if (pro && pro.after === true && pro.before !== true) return 'Pro profile added';
+  if (changes.some(c => c.field === 'name')) return 'Player renamed';
+  if (fieldsOnly(changes, ['total_earnings'])) return 'Earnings updated';
+  if (fieldsOnly(changes, ['steam_name', 'steam_location'])) return 'Steam profile updated';
+  return null;
+}
 export function updatePresentation(update) {
   const entity = entities[update.entity] || 'Record';
   const changes = Array.isArray(update.changes) ? update.changes : [];
@@ -72,6 +106,8 @@ export function updatePresentation(update) {
     if (update.entity === 'team' && changes.some(c => ['name', 'tag'].includes(c.field))) title = 'Team rebranded';
     if (update.entity === 'team' && changes.length === 1 && changes[0].field === 'team_captain') title = 'Captain changed';
     if (update.entity === 'tournament' && changes.some(c => ['start_timestamp','end_timestamp'].includes(c.field))) title = 'Schedule changed';
+    if (update.entity === 'tournament') title = tournamentStatusTitle(changes) || title;
+    if (update.entity === 'player') title = playerChangeTitle(changes) || title;
   }
   const treatments = {
     'Player replaced': ['swap', 'change'], 'Roster rebuilt': ['rebuild', 'change'],
@@ -80,13 +116,20 @@ export function updatePresentation(update) {
     'Player left': ['user-minus', 'departure'], 'Players left': ['user-minus', 'departure'],
     'Team rebranded': ['identity', 'change'], 'Captain changed': ['captain', 'change'],
     'Schedule changed': ['calendar-clock', 'change'], 'Prize pool updated': ['coins', 'financial'],
-    'Team record updated': ['chart-no-axes-column', 'neutral']
+    'Team record updated': ['chart-no-axes-column', 'neutral'],
+    'Tournament concluded': ['flag', 'neutral'], 'Tournament approved': ['circle-check', 'positive'],
+    'Tournament rejected': ['circle-x', 'departure'], 'Tournament deleted': ['circle-x', 'departure'],
+    'Tournament status changed': ['trophy', 'change'],
+    'Player joined team': ['user-plus', 'positive'], 'Player left team': ['user-minus', 'departure'], 'Player transferred': ['swap', 'change'],
+    'Player renamed': ['identity', 'change'], 'Earnings updated': ['coins', 'financial'], 'Steam profile private': ['lock', 'caution'],
+    'Steam profile public': ['unlock', 'positive'], 'Steam profile unavailable': ['lock', 'caution'], 'Steam profile updated': ['user-round', 'neutral'],
+    'Pro profile added': ['circle-check', 'positive']
   };
   const [eventIcon, tone] = treatments[title] || [icon, 'neutral'];
   icon = eventIcon;
   const inferred = title === 'Possible disband';
   const transition = !created && update.entity === 'roster' ? rosterTransition(update) : null;
-  const path = update.entity === 'tournament' ? 'league' : ['team','roster'].includes(update.entity) ? 'team' : null;
+  const path = update.entity === 'tournament' ? 'league' : ['team','roster'].includes(update.entity) ? 'team' : update.entity === 'player' ? 'player' : null;
   const href = path && /^[1-9][0-9]*$/.test(String(update.entity_id)) ? `/${path}/${update.entity_id}` : null;
   return { entity, title, icon, tone, inferred, transition, created, changes, href, name: update.name || `${entity} #${update.entity_id}`, note: {
     tournament: 'Tournament added to the directory.', team: 'Team added to the directory.',
@@ -122,7 +165,7 @@ export function updateSummary(update) {
     }
     return [...counts].map(([label, count]) => `${count} ${label}`).join(' · ') || 'Roster updated';
   }
-  if (changes.length <= 2 && changes.every(c => ['total_prize_pool', 'wins', 'losses', 'status'].includes(c.field))) {
+  if (changes.length <= 2 && changes.every(c => ['total_prize_pool', 'wins', 'losses', 'status', 'total_earnings', 'steam_profile', 'team'].includes(c.field))) {
     return changes.map(c => `${fieldLabel(c.field)}: ${updateValue(c.field, c.before)} → ${updateValue(c.field, c.after)}`).join(' · ');
   }
   const fields = changes.slice(0, 2).map(c => fieldLabel(c.field)).join(', ');

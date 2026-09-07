@@ -33,7 +33,7 @@ type pageContent struct {
 
 // NewPagesDelivery serves crawlable HTML using the same services as the JSON API.
 // The Svelte app progressively replaces this initial content in the browser.
-func NewPagesDelivery(e *echo.Echo, leagues LeaguesService, teams TeamsService, matches MatchService, standings StandingsService, updates UpdatesService, matchIndex MatchSitemapService, indexPath, siteURL, analyticsID string) error {
+func NewPagesDelivery(e *echo.Echo, leagues LeaguesService, teams TeamsService, players PlayersService, matches MatchService, standings StandingsService, updates UpdatesService, matchIndex MatchSitemapService, indexPath, siteURL, analyticsID string) error {
 	analyticsID = strings.TrimSpace(analyticsID)
 	if analyticsID != "" && !regexp.MustCompile(`^G-[A-Z0-9]+$`).MatchString(analyticsID) {
 		return fmt.Errorf("GA_MEASUREMENT_ID must be a GA4 measurement ID beginning with G-")
@@ -42,8 +42,8 @@ func NewPagesDelivery(e *echo.Echo, leagues LeaguesService, teams TeamsService, 
 	if err != nil || origin.Host == "" || (origin.Scheme != "https" && origin.Scheme != "http") || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || (origin.Path != "" && origin.Path != "/") {
 		return fmt.Errorf("SITE_URL must be an absolute http(s) origin")
 	}
-	p := &pagesDelivery{leagues: leagues, teams: teams, matches: matches, standings: standings, updates: updates, matchIndex: matchIndex, indexPath: indexPath, siteURL: strings.TrimRight(siteURL, "/"), analyticsID: analyticsID}
-	for _, route := range []string{"/", "/team", "/dpc", "/activity", "/league/:id", "/team/:id", "/match/:leagueID/:matchID"} {
+	p := &pagesDelivery{leagues: leagues, teams: teams, players: players, matches: matches, standings: standings, updates: updates, matchIndex: matchIndex, indexPath: indexPath, siteURL: strings.TrimRight(siteURL, "/"), analyticsID: analyticsID}
+	for _, route := range []string{"/", "/team", "/dpc", "/activity", "/league/:id", "/team/:id", "/player/:id", "/match/:leagueID/:matchID"} {
 		e.GET(route, p.page)
 		e.HEAD(route, p.page)
 	}
@@ -75,6 +75,7 @@ func NewPagesDelivery(e *echo.Echo, leagues LeaguesService, teams TeamsService, 
 type pagesDelivery struct {
 	leagues     LeaguesService
 	teams       TeamsService
+	players     PlayersService
 	matches     MatchService
 	standings   StandingsService
 	updates     UpdatesService
@@ -191,6 +192,8 @@ func (p *pagesDelivery) page(c echo.Context) error {
 						data.Links = append(data.Links, pageLink{fmt.Sprintf("/league/%d", row.EntityID), row.Name})
 					case "team", "roster":
 						data.Links = append(data.Links, pageLink{fmt.Sprintf("/team/%d", row.EntityID), row.Name})
+					case "player":
+						data.Links = append(data.Links, pageLink{fmt.Sprintf("/player/%d", row.EntityID), row.Name})
 					}
 				}
 			}
@@ -300,13 +303,31 @@ func (p *pagesDelivery) page(c echo.Context) error {
 			data.Title = team.Name + " | Dota 2 Teams"
 			data.Description = fmt.Sprintf("%s roster and tournament results. %d wins and %d losses.", team.Name, team.Wins, team.Losses)
 			for _, member := range team.Members {
-				if member.ProName != "" {
-					data.Paragraphs = append(data.Paragraphs, member.ProName)
+				name := member.ProName
+				if name == "" {
+					name = member.PlayerName
+				}
+				if member.AccountID > 0 {
+					if name == "" {
+						name = fmt.Sprintf("Player #%d", member.AccountID)
+					}
+					data.Links = append(data.Links, pageLink{fmt.Sprintf("/player/%d", member.AccountID), name})
+				} else if name != "" {
+					data.Paragraphs = append(data.Paragraphs, name)
 				}
 			}
 			for _, result := range team.DpcResults {
 				data.Links = append(data.Links, pageLink{fmt.Sprintf("/league/%d", result.LeagueID), fmt.Sprintf("League #%d: place %d", result.LeagueID, result.Standing)})
 			}
+		}
+	case "/player/:id":
+		var player *model.Player
+		player, err = p.players.GetByID(c.Request().Context(), c.Param("id"))
+		if err == nil && (player == nil || player.ID <= 0) {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+		if err == nil {
+			populatePlayerPage(&data, player)
 		}
 	case "/match/:leagueID/:matchID":
 		leagueID, parseErr := strconv.Atoi(c.Param("leagueID"))
@@ -433,10 +454,14 @@ func (p *pagesDelivery) sitemap(c echo.Context) error {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusServiceUnavailable)
 		}
+		_, playerTotal, err := p.players.GetSitemapPlayers(c.Request().Context(), 0, 1)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusServiceUnavailable)
+		}
 		for _, kind := range []struct {
 			name  string
 			total int64
-		}{{"leagues", leagueTotal}, {"teams", teamTotal}, {"matches", matchTotal}} {
+		}{{"leagues", leagueTotal}, {"teams", teamTotal}, {"players", playerTotal}, {"matches", matchTotal}} {
 			for page := int64(1); (page-1)*1000 < kind.total; page++ {
 				doc.Maps = append(doc.Maps, sitemapEntry{fmt.Sprintf("%s/sitemaps/%s/%d", p.siteURL, kind.name, page)})
 			}
@@ -477,6 +502,14 @@ func (p *pagesDelivery) sitemap(c echo.Context) error {
 			}
 			for _, row := range rows {
 				doc.URLs = append(doc.URLs, sitemapEntry{fmt.Sprintf("%s/team/%d", p.siteURL, row.ID)})
+			}
+		case "players":
+			ids, _, err := p.players.GetSitemapPlayers(c.Request().Context(), (page-1)*1000, 1000)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusServiceUnavailable)
+			}
+			for _, id := range ids {
+				doc.URLs = append(doc.URLs, sitemapEntry{fmt.Sprintf("%s/player/%d", p.siteURL, id)})
 			}
 		default:
 			return echo.NewHTTPError(http.StatusNotFound)

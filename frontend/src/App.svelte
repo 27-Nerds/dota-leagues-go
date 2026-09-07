@@ -4,6 +4,7 @@
   import LeagueDetail from "./LeagueDetail.svelte";
   import MatchPage from "./MatchPage.svelte";
   import TeamPage from "./TeamPage.svelte";
+  import PlayerPage from "./PlayerPage.svelte";
   import Teams from "./Teams.svelte";
   import Updates from "./Updates.svelte";
   import DpcPage from "./DpcPage.svelte";
@@ -16,6 +17,7 @@
     home: 'Browse Dota 2 leagues, tournament schedules, live games, and match results.',
     teams: 'Explore Dota 2 teams, player rosters, statistics, and tournament history.',
     team: 'View a Dota 2 team roster, player statistics, and tournament history.',
+    player: 'View a Dota 2 player’s professional profile, Steam profile, and recorded changes.',
     league: 'Explore this Dota 2 league’s schedule, live games, and tournament results.',
     match: 'View a Dota 2 match scoreboard, teams, heroes, and player statistics.',
     dpc: 'Explore official Dota Pro Circuit standings and league results.'
@@ -30,7 +32,7 @@
     <a class="brand" href="/" aria-label="Dota 2 Leagues home"><img src="/logo.png" alt="Dota 2 Leagues" /></a>
     <nav aria-label="Main navigation">
       <a href="/" aria-current={['home','league','match'].includes(route.name) ? 'page' : undefined}>Leagues</a>
-      <a href="/team" aria-current={['teams','team'].includes(route.name) ? 'page' : undefined}>Teams</a>
+      <a href="/team" aria-current={['teams','team','player'].includes(route.name) ? 'page' : undefined}>Teams</a>
       <a href="/activity" aria-current={route.name === 'updates' ? 'page' : undefined}>Updates</a>
       <a href="/dpc" aria-current={route.name === 'dpc' ? 'page' : undefined}>DPC Standings</a>
     </nav>
@@ -41,6 +43,7 @@
   {:else if route.name === "league"}<LeagueDetail id={route.id} />
   {:else if route.name === "match"}<MatchPage leagueId={route.leagueId} matchId={route.matchId} />
   {:else if route.name === "team"}<TeamPage id={route.id} />
+  {:else if route.name === "player"}<PlayerPage id={route.id} />
   {:else if route.name === "teams"}<Teams />
   {:else if route.name === "updates"}<Updates />
   {:else if route.name === "dpc"}<DpcPage />

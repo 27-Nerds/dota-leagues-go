@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// playerFeedName mirrors the page heading: professional name, then Steam name.
+func playerFeedName(player *model.Player) string {
+	if player.Name != "" {
+		return player.Name
+	}
+	return player.SteamName
+}
+
 func (dl *DataLoader) performSteamProfilesUpdate(ctx context.Context) error {
 	return dl.refreshSteamProfiles(ctx, api.LoadSteamPlayer)
 }
@@ -18,18 +26,14 @@ func (dl *DataLoader) refreshSteamProfiles(ctx context.Context, load func(contex
 	if err != nil {
 		return err
 	}
+	// The Steam rate limiter inside the loader paces requests; no extra pause is needed.
 	completed, unavailable := 0, 0
-	for i, id := range ids {
-		if i > 0 {
-			timer := time.NewTimer(5 * time.Second)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-			}
-		}
+	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
+			return err
+		}
+		previous, err := dl.PlayerRepository.GetByID(ctx, id)
+		if err != nil && !e.IsNotFound(err) {
 			return err
 		}
 		profile, fetchErr := load(ctx, id)
@@ -49,6 +53,11 @@ func (dl *DataLoader) refreshSteamProfiles(ctx context.Context, load func(contex
 		}
 		if err := dl.PlayerRepository.SaveSteamEnrichment(ctx, id, profile, time.Now(), status); err != nil {
 			return err
+		}
+		if previous != nil && status != "request_failed" {
+			if current, err := dl.PlayerRepository.GetByID(ctx, id); err == nil && current != nil {
+				dl.recordUpdate(ctx, "player", id, playerFeedName(current), steamSnapshot(previous), steamSnapshot(current))
+			}
 		}
 		// A transport/rate-limit failure may affect Steam globally. Pause this sweep
 		// instead of sending another 49 requests; retry metadata prevents starvation.

@@ -159,6 +159,14 @@ func updateGroup(u model.Update) (string, time.Duration) {
 			return "prize", time.Hour
 		}
 	}
+	if u.Entity == "player" {
+		if allowed("total_earnings") {
+			return "earnings", 24 * time.Hour
+		}
+		if allowed("steam_name", "steam_location", "steam_profile") {
+			return "steam", 24 * time.Hour
+		}
+	}
 	return "", 0
 }
 func equalUpdateValue(a, b any) bool {

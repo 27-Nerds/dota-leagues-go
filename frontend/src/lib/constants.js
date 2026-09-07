@@ -71,6 +71,20 @@ export function tierText(tier) {
   return TIERS[tier] || "Unknown";
 }
 
+// Fantasy roles from the DPC pro player feed.
+export const FANTASY_ROLES = { 1: "Core", 2: "Support" };
+export function fantasyRoleText(role) {
+  return FANTASY_ROLES[role] || "";
+}
+
+export function playerHref(accountId) {
+  return /^[1-9][0-9]*$/.test(String(accountId)) ? `/player/${accountId}` : null;
+}
+
+export function statusText(status) {
+  return LEAGUE_STATUS[status] || "Unknown";
+}
+
 export function leagueLogo(leagueId) {
   if (!leagueId) return null;
   return `${BASE_URL}/${leagueId}/logo.png`;

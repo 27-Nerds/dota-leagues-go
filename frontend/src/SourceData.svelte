@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { api } from './lib/api.js';
   import { auditRows, groupRows, groupLinks } from './lib/source-data.js';
-  import { formatDateTime, steamProfileUrl } from './lib/constants.js';
+  import { formatDateTime, playerHref } from './lib/constants.js';
   export let kind;
   export let entityID;
   let data = null;
@@ -43,9 +43,9 @@
     {/if}
     {#if error}<p role="alert" class="note">{error}</p>{/if}
     {#if audits.length}
-      <h3>Source audit</h3>
-      <p class="note">Valve action codes are unverified. History may be incomplete.</p>
-      <div class="table-scroll"><table class="audit-table"><thead><tr><th>Source time (UTC)</th><th>Player</th><th>Action code</th></tr></thead><tbody>{#each audits as row}<tr><td>{formatDateTime(row.timestamp)}</td><td>{#if data.player_names?.[row.account_id]}<a href={steamProfileUrl(row.account_id)}>{data.player_names[row.account_id]}</a><small class="account-id">#{row.account_id}</small>{:else}Account #{row.account_id}{/if}</td><td>{row.audit_action}</td></tr>{/each}</tbody></table></div>
+      <h3>Roster log from Valve</h3>
+      <p class="note">Membership events as reported in Valve’s team record, newest first. Valve does not document the action codes, so they are shown as received; the same code applied to several players within minutes usually marks one roster change. This log may not include every move.</p>
+      <div class="table-scroll"><table class="audit-table"><thead><tr><th>When (UTC)</th><th>Player</th><th class="num">Account</th><th class="num">Valve code</th></tr></thead><tbody>{#each audits as row}<tr><td>{formatDateTime(row.timestamp)}</td><td>{#if playerHref(row.account_id)}<a href={playerHref(row.account_id)}>{data.player_names?.[row.account_id] || `Player #${row.account_id}`}</a>{:else}Account #{row.account_id}{/if}</td><td class="num account-id">{row.account_id}</td><td class="num"><span class="code" title="Numeric action code from Valve; meaning not documented">{row.audit_action}</span></td></tr>{/each}</tbody></table></div>
     {/if}
     {#if groups.length}
       <h3>Tournament groups</h3>
@@ -66,9 +66,11 @@
   .note { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
   h3 { font-size: 12px; font-weight: 500; color: var(--muted); margin: 14px 0 4px; }
   .versions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 12px; }
-  .account-id { display: inline; color: var(--muted); font-size: 11px; margin-left: 8px; font-variant-numeric: tabular-nums; }
+  .account-id { color: var(--muted); }
   .audit-table th:first-child { width: 180px; }
-  .audit-table th:last-child { width: 100px; }
+  .audit-table th:last-child { width: 110px; }
   .audit-table td { white-space: nowrap; }
+  .num { text-align: right; }
+  .code { display: inline-block; min-width: 1.75em; padding: 1px 6px; border-radius: 3px; background: var(--surface-subtle); color: var(--muted); text-align: center; cursor: help; }
   td { font-variant-numeric: tabular-nums; } tr:target { background: var(--accent-soft); }
 </style>

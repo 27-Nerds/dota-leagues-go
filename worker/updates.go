@@ -36,6 +36,8 @@ func (dl *DataLoader) recordUpdate(ctx context.Context, entity string, id int, n
 		url = "/league/" + strconv.Itoa(id)
 	case "team", "roster":
 		url = "/team/" + strconv.Itoa(id)
+	case "player":
+		url = "/player/" + strconv.Itoa(id)
 	}
 	update := &model.Update{Entity: entity, EntityID: id, Name: name, Action: action, URL: url, Changes: changes}
 	if entity == "roster" {
@@ -51,7 +53,49 @@ func (dl *DataLoader) recordPlayerUpdate(ctx context.Context, player *model.Play
 			team.Name = stored.Name
 		}
 	}
-	dl.storeUpdate(ctx, &model.Update{Entity: "player", EntityID: player.ID, Name: player.Name, Action: "created", Team: team, Changes: []model.UpdateChange{}})
+	dl.storeUpdate(ctx, &model.Update{Entity: "player", EntityID: player.ID, Name: player.Name, Action: "created", URL: "/player/" + strconv.Itoa(player.ID), Team: team, Changes: []model.UpdateChange{}})
+}
+
+// playerSnapshot covers the professional identity from the DPC feed.
+func playerSnapshot(player *model.Player) map[string]any {
+	if player == nil {
+		return nil
+	}
+	team := player.TeamName
+	if team == "" && player.TeamID > 0 {
+		team = "Team #" + strconv.Itoa(player.TeamID)
+	}
+	return map[string]any{
+		"name": player.Name, "real_name": player.RealName, "country_code": player.CountryCode,
+		"team_id": player.TeamID, "team": team, "fantasy_role": player.FantasyRole,
+		"is_pro": player.IsPro, "sponsor": player.Sponsor, "total_earnings": player.TotalEarnings,
+	}
+}
+
+// steamSnapshot covers what a Steam lookup can change. Transient request failures
+// are not part of the state, so a retry never produces a feed entry.
+func steamSnapshot(player *model.Player) map[string]any {
+	if player == nil {
+		return nil
+	}
+	return map[string]any{
+		"steam_name": player.SteamName, "steam_location": player.SteamLocation,
+		"steam_profile": steamProfileState(player),
+	}
+}
+
+func steamProfileState(player *model.Player) string {
+	switch {
+	case player.SteamStatus == "" && player.SteamName == "":
+		return ""
+	case player.SteamStatus == "unavailable":
+		return "unavailable"
+	case player.SteamPrivacy != "" && player.SteamPrivacy != "public":
+		return player.SteamPrivacy
+	case player.SteamName != "":
+		return "public"
+	}
+	return ""
 }
 
 func (dl *DataLoader) storeUpdate(ctx context.Context, update *model.Update) {
