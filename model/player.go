@@ -30,13 +30,14 @@ type PlayerTeamEntry struct {
 	TeamAvailable  bool   `json:"team_available,omitempty"`
 }
 
-// PlayerRosterTeam is the team whose Valve roster currently lists the player. It can
-// differ from the DPC feed's team_id, which lags or reports no team for some players.
+// PlayerRosterTeam is the stored roster listing with the latest joining date.
+// It is independent of the DPC profile and does not establish an active team.
 type PlayerRosterTeam struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Tag      string `json:"tag,omitempty"`
-	JoinedAt int    `json:"joined_at,omitempty"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Tag         string `json:"tag,omitempty"`
+	JoinedAt    int    `json:"joined_at,omitempty"`
+	RetrievedAt int64  `json:"retrieved_at,omitempty"`
 }
 
 // Player - player api and db struct

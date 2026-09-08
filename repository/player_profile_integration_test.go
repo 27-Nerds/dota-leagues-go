@@ -111,13 +111,13 @@ func TestSteamProfileUpgrade(t *testing.T) {
 	}
 	// The Valve roster can list a player the DPC feed shows without a team; the newest roster entry wins.
 	if _, err := conn.Query(t.Context(), `LET rows = [
-  {_key: "38", team_id: 38, name: "Roster Team", tag: "RT", members: [{account_id: 42, time_joined: 200}]},
+  {_key: "38", team_id: 38, name: "Roster Team", tag: "RT", updated_timestamp: 300, members: [{account_id: 42, time_joined: 200}]},
   {_key: "39", team_id: 39, name: "Old Team", members: [{account_id: 42, time_joined: 100}]}]
  FOR r IN rows INSERT r INTO teams RETURN 1`, nil, new(int)); err != nil {
 		t.Fatal(err)
 	}
 	profile, err = repo.GetByID(t.Context(), 42)
-	if err != nil || profile.RosterTeam == nil || profile.RosterTeam.ID != 38 || profile.RosterTeam.Name != "Roster Team" || profile.RosterTeam.JoinedAt != 200 {
+	if err != nil || profile.RosterTeam == nil || profile.RosterTeam.ID != 38 || profile.RosterTeam.Name != "Roster Team" || profile.RosterTeam.JoinedAt != 200 || profile.RosterTeam.RetrievedAt != 300 {
 		t.Fatalf("roster team: %+v %v", profile.RosterTeam, err)
 	}
 	profiles, err := repo.GetProfiles(t.Context(), []int{42, 43})

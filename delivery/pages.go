@@ -581,9 +581,11 @@ func isHTMLPageRequest(c echo.Context) bool {
 	}
 }
 
+var buildStylesheet = regexp.MustCompile(`href="(/build/[^"<>]+\.css)"`)
+
 var errorDocument = template.Must(template.New("error-page").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>{{.Title}} | Dota 2 Leagues</title>
-<link rel="stylesheet" href="/build/index.css">
+<link rel="stylesheet" href="{{.Stylesheet}}">
 <style>body{margin:0;min-height:100vh;background:#f5f5f0;color:#282d25;font:16px/1.6 'Fira Sans',Arial,sans-serif} .error-header{background:#fff;border-bottom:1px solid #dce1d4;padding:16px max(20px,calc((100vw - 1200px)/2));display:flex;align-items:center;gap:24px;flex-wrap:wrap}.error-header a{color:#60695a;text-decoration:none}.error-header nav{display:flex;gap:6px;flex-wrap:wrap}.error-header nav a{font-size:13px;padding:10px 12px;border-radius:5px}.error-header nav a:hover{background:#f0f2eb;color:#282d25}.error-header .brand{display:flex;align-items:center}.error-header img{width:129px;max-height:44px;object-fit:contain;filter:brightness(.45)}.error-main{max-width:800px;margin:72px auto;padding:0 24px}.error-code{font-size:13px;text-transform:uppercase;letter-spacing:2px;color:#626b5b}.error-main h1{font-size:clamp(28px,5vw,42px);line-height:1.2}.error-main p{color:#626b5b}.error-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}.error-actions a{padding:12px 20px;border:1px solid #d9dfd1;border-radius:5px;text-decoration:none;color:#252922}.error-actions a:first-child{background:#282d25;border-color:#282d25;color:#fff}.error-actions a:focus-visible,.error-header a:focus-visible{outline:3px solid #805f16;outline-offset:4px}@media(max-width:600px){.error-header{padding:16px;gap:14px}.error-header .brand{flex-basis:100%}.error-header nav{width:100%;justify-content:space-between}.error-main{margin:40px auto;padding:0 20px}}</style></head>
 <body><header class="error-header"><a class="brand" href="/" aria-label="Dota 2 Leagues home"><img src="/logo.png" alt="Dota 2 Leagues"></a><nav aria-label="Main navigation"><a href="/">Leagues</a><a href="/team">Teams</a><a href="/player">Players</a><a href="/activity">Updates</a><a href="/dpc">DPC Standings</a></nav></header>
 <main class="error-main"><div class="error-code">{{.Status}} / {{.Label}}</div><h1>{{.Title}}</h1><p>{{.Message}}</p><div class="error-actions">{{if .Retry}}<a href="{{.Retry}}">Try again</a>{{end}}<a href="/">Browse leagues</a><a href="/team">Browse teams</a></div></main></body></html>`))
@@ -592,8 +594,15 @@ func (p *pagesDelivery) errorPage(c echo.Context, status int) error {
 	data := struct {
 		Status                       int
 		Label, Title, Message, Retry string
+		Stylesheet                   string
 	}{
-		Status: status, Label: "Service unavailable", Title: "We couldn’t load this page", Message: "The data service is temporarily unavailable. Please try again in a moment.", Retry: c.Request().URL.RequestURI(),
+		Stylesheet: "/build/index.css", Status: status, Label: "Service unavailable", Title: "We couldn’t load this page", Message: "The data service is temporarily unavailable. Please try again in a moment.", Retry: c.Request().URL.RequestURI(),
+	}
+	// Resolve the build's hashed stylesheet for error pages too.
+	if shell, err := os.ReadFile(p.indexPath); err == nil {
+		if match := buildStylesheet.FindSubmatch(shell); match != nil {
+			data.Stylesheet = string(match[1])
+		}
 	}
 	if status == http.StatusNotFound {
 		data.Label, data.Title, data.Message, data.Retry = "Page not found", "This page is off the map", "The page or record you’re looking for is unavailable. Explore leagues and teams to find your next match.", ""

@@ -39,7 +39,7 @@ func populatePlayerPage(data *pageContent, player *model.Player) {
 	data.Title = name + " | Dota 2 Players"
 	summary := name + " Dota 2 player profile"
 	if player.TeamName != "" {
-		summary += " playing for " + player.TeamName
+		summary += "; DPC-listed team: " + player.TeamName
 	}
 	data.Description = summary + ". Professional record, Steam profile, and recorded changes."
 	data.Entity = schemaNode{"@type": "Person", "@id": strings.Split(data.Canonical, "?")[0] + "#entity", "name": name, "url": strings.Split(data.Canonical, "?")[0], "identifier": strconv.Itoa(player.ID)}
@@ -54,14 +54,18 @@ func populatePlayerPage(data *pageContent, player *model.Player) {
 		if team == "" {
 			team = fmt.Sprintf("Team #%d", player.TeamID)
 		}
+		data.Paragraphs = append(data.Paragraphs, "DPC-listed team: "+team+".")
 		data.Links = append(data.Links, pageLink{fmt.Sprintf("/team/%d", player.TeamID), team})
 	}
 	if roster := player.RosterTeam; roster != nil && roster.ID > 0 && roster.ID != player.TeamID {
+		if player.TeamID > 0 {
+			data.Paragraphs = append(data.Paragraphs, "Team listings differ. The DPC profile and stored team roster name different teams; neither confirms the current active team.")
+		}
 		name := roster.Name
 		if name == "" {
 			name = fmt.Sprintf("Team #%d", roster.ID)
 		}
-		data.Paragraphs = append(data.Paragraphs, "Listed on the roster of "+name+".")
+		data.Paragraphs = append(data.Paragraphs, "Listed on team roster: "+name+". This stored listing does not confirm an active team.")
 		data.Links = append(data.Links, pageLink{fmt.Sprintf("/team/%d", roster.ID), name})
 	}
 	for _, entry := range player.TeamHistory {

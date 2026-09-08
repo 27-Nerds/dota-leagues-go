@@ -5,6 +5,8 @@ import (
 	"dota_league/model"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -65,5 +67,20 @@ func TestDirectoryPagesIncludeInitialResults(t *testing.T) {
 		if len(data.Results) != 1 || data.Meta.Total != 101 || data.Search != strings.SplitN(path, "?", 2)[1] {
 			t.Fatalf("%s: %+v", path, data)
 		}
+	}
+}
+
+func TestErrorPageUsesHashedStylesheet(t *testing.T) {
+	index := filepath.Join(t.TempDir(), "index.html")
+	if err := os.WriteFile(index, []byte(`<link rel="stylesheet" crossorigin href="/build/index-abc123.css">`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(httptest.NewRequest("GET", "/missing", nil), rec)
+	if err := (&pagesDelivery{indexPath: index}).errorPage(c, 404); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rec.Body.String(), `href="/build/index-abc123.css"`) {
+		t.Fatal("error page did not use current stylesheet")
 	}
 }

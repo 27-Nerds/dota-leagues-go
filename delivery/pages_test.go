@@ -421,3 +421,15 @@ func TestOptionalGoogleAnalytics(t *testing.T) {
 		}
 	}
 }
+
+func TestPlayerTeamSourcesAvoidActiveTeamClaims(t *testing.T) {
+	body := getPage(pageServer(t, nil), "/player/9").Body.String()
+	for _, want := range []string{"DPC-listed team: Test Team", "Team listings differ.", "Listed on team roster: Roster Team"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, "playing for") {
+		t.Error("stored listing described as active membership")
+	}
+}

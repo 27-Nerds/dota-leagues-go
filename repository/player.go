@@ -115,7 +115,7 @@ LET roster = FIRST(
  FILTER @account IN t.members[*].account_id
  FOR m IN t.members FILTER m.account_id == @account
  SORT m.time_joined DESC, t.team_id DESC LIMIT 1
- RETURN {id: t.team_id, name: t.name, tag: t.tag, joined_at: m.time_joined}
+ RETURN {id: t.team_id, name: t.name, tag: t.tag, joined_at: m.time_joined, retrieved_at: t.updated_timestamp}
 )
 RETURN MERGE(p, {
  team_name: team.name != null && team.name != "" ? team.name : p.team_name,

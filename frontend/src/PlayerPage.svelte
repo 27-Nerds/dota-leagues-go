@@ -1,4 +1,5 @@
 <script>
+  import PlayerTeamListings from "./PlayerTeamListings.svelte";
   import PlayerAvatar from "./PlayerAvatar.svelte";
   import Breadcrumbs from "./Breadcrumbs.svelte";
   import StatePanel from "./StatePanel.svelte";
@@ -23,11 +24,6 @@
   $: current = history[0] || null;
   $: moves = teamMoves(player, updates);
   $: staleFeed = listed && player?.dpc_seen_at > 0 && Date.now() - Number(player.dpc_seen_at) > 7 * 86400000;
-  // Prefer the DPC team; fall back to the team whose Valve roster lists the player.
-  $: roster = player?.roster_team?.id > 0 ? player.roster_team : null;
-  $: team = player?.team_id > 0 ? { id: player.team_id, name: player.team_name || `Team #${player.team_id}`, tag: player.team_tag, href: player.team_available ? `/team/${player.team_id}` : null }
-    : roster ? { id: roster.id, name: roster.name || `Team #${roster.id}`, tag: roster.tag, href: `/team/${roster.id}` } : null;
-  $: rosterDiffers = roster && roster.id !== player?.team_id;
   const millis = value => Number(value) > 0 ? Number(value) / 1000 : 0;
   async function load() {
     loading = true; loadError = null;
@@ -55,11 +51,11 @@
   <header class="player-header profile-header">
     <div class="portrait" aria-hidden="true"><span class="initial">{name.trim().charAt(0).toUpperCase() || "?"}</span><PlayerAvatar src={player.avatar_url} /></div>
     <div class="info">
-      <p class="eyebrow">{listed ? "Professional player" : "Steam profile only"}{#if steam.hasData || steam.kind !== "unchecked"}<span class="status" class:public={steam.kind === "public"} title="Steam profile visibility at the last check"><span class="dot" aria-hidden="true"></span>Steam {steam.label.toLowerCase()}</span>{/if}</p>
+      <p class="eyebrow">{listed ? "DPC-listed player" : "Steam profile only"}{#if steam.hasData || steam.kind !== "unchecked"}<span class="status" class:public={steam.kind === "public"} title="Steam profile visibility at the last check"><span class="dot" aria-hidden="true"></span>Steam {steam.label.toLowerCase()}</span>{/if}</p>
       <h1>{name}</h1>
       {#if player.real_name?.trim()}<p class="real-name">{player.real_name}</p>{/if}
       <dl class="meta" aria-label="Player details">
-        <div><dt>Team</dt><dd>{#if team}{#if team.href}<a href={team.href}>{team.name}</a>{:else}{team.name}{/if}{#if team.tag && team.tag !== team.name}<span class="tag">{team.tag}</span>{/if}{:else}{listed ? "No team" : "—"}{/if}</dd></div>
+
         <div><dt>Role</dt><dd>{fantasyRoleText(player.fantasy_role) || "—"}</dd></div>
         <div><dt>Country</dt><dd>{countryText(player.country_code) || "—"}</dd></div>
         <div><dt>Account</dt><dd>{player.account_id}</dd></div>
@@ -69,27 +65,40 @@
 
   <div class="profile-grid">
     <section class="column" aria-labelledby="pro-title">
-      <h2 id="pro-title">Professional profile</h2>
+      <PlayerTeamListings {player} />
+      <h2 id="pro-title">DPC profile</h2>
       {#if listed}
-        {#if staleFeed}<p class="callout">Not present in Valve’s pro player feed since {formatDateTime(millis(player.dpc_seen_at))} UTC. The details below are from that last listing.</p>{/if}
-        {#if registration || current || rosterDiffers || player.sponsor?.trim() || player.is_locked || player.total_earnings > 0}
+        {#if staleFeed}<p class="callout">Last seen in Valve’s pro player feed on {formatDateTime(millis(player.dpc_seen_at))} UTC. These stored details may be out of date.</p>{/if}
+        {#if registration || current || player.sponsor?.trim() || player.is_locked || player.total_earnings > 0}
           <dl class="facts">
-            {#if current}<div><dt>Team since <small title="Start date from Valve's pro player feed">Valve</small></dt><dd>{formatDate(current.start_timestamp)}<span class="tag">{current.team_name || `Team #${current.team_id}`}</span></dd></div>{/if}
+            {#if current}<div><dt>DPC-listed join date</dt><dd>{formatDate(current.start_timestamp)}<span class="tag">{current.team_name || `Team #${current.team_id}`}</span></dd></div>{/if}
             {#if registration}<div><dt>Pro registration</dt><dd>Period {registration.registration_period}<span class="tag">registered {formatDate(registration.timestamp)}</span></dd></div>{/if}
-            {#if rosterDiffers}<div><dt>Current roster <small title="From the team's Valve roster, which can differ from the DPC player feed">(Valve roster)</small></dt><dd><a href={`/team/${roster.id}`}>{roster.name || `Team #${roster.id}`}</a>{#if roster.joined_at}<span class="tag">since {formatDate(roster.joined_at)}</span>{/if}</dd></div>{/if}
+
             {#if player.total_earnings > 0}<div><dt>Recorded earnings</dt><dd>{formatMoney(player.total_earnings)}</dd></div>{/if}
-            {#if player.sponsor?.trim()}<div><dt>Sponsor</dt><dd>{player.sponsor}</dd></div>{/if}
+            {#if player.sponsor?.trim()}<div><dt>Listed sponsor</dt><dd>{player.sponsor}</dd></div>{/if}
             {#if player.is_locked}<div><dt>Roster</dt><dd>Locked</dd></div>{/if}
           </dl>
         {/if}
         {#if moves.length}
-          <h3>Team history <small title="Current team from Valve's feed, plus moves recorded by this site. Valve does not publish past teams.">Recorded</small></h3>
+          <h3>Team listing history</h3>
           <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to scroll the table horizontally.) -->
-          <div class="table-scroll" role="region" aria-label="Team history" tabindex="0"><table>
-            <thead><tr><th scope="col" class="date">Date (UTC)</th><th scope="col">Move</th><th scope="col">Source</th></tr></thead>
-            <tbody>{#each moves as m}<tr><td class="date">{formatDate(m.at / 1000)}</td><td>{#if m.toId && m.fromId}{m.from || `Team #${m.fromId}`} → <a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>{:else if m.toId}Joined <a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>{:else}Left {m.from || `Team #${m.fromId}`}{/if}</td><td class="muted">{m.source}</td></tr>{/each}</tbody>
+          <div class="table-scroll" role="region" aria-label="Team listing history" tabindex="0"><table>
+            <thead><tr><th scope="col" class="date">Date (UTC)</th><th scope="col">Listing or change</th><th scope="col">Source</th></tr></thead>
+            <tbody>{#each moves as m}
+              <tr>
+                <td class="date">{formatDate(m.at / 1000)}<small class="date-context">{m.kind === 'listed_join' ? 'Valve-listed join date' : 'Observed by this site'}</small></td>
+                <td>
+                  <span class="event-label">{m.kind === 'listed_join' ? 'Join date listed for' : m.source === 'Team roster' ? 'Roster listing changed' : 'Team listing changed'}</span>
+                  {#if m.kind === 'listed_join'}<a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>
+                  {:else if m.toId && m.fromId}{m.from || `Team #${m.fromId}`} → <a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>
+                  {:else if m.toId}No team listed → <a href={`/team/${m.toId}`}>{m.to || `Team #${m.toId}`}</a>
+                  {:else}{m.from || `Team #${m.fromId}`} → No team listed{/if}
+                </td>
+                <td class="muted">{m.source}</td>
+              </tr>
+            {/each}</tbody>
           </table></div>
-          <p class="hint">Valve publishes only the current team, so moves before this site started recording them are not shown.</p>
+          <p class="hint">“Observed by this site” dates show when we noticed a listing change, not when a transfer happened. A Valve-listed join date may describe the same membership. These records are not a complete transfer history.</p>
         {/if}
         {#if registrations.length}
           <h3>Registration history <small title="Valve’s pro circuit registration windows, newest first">Valve</small></h3>
@@ -108,7 +117,7 @@
           </table></div>
         {/if}
         {#if !moves.length && !registrations.length && !results.length && !registration}
-          <p class="callout">Valve’s pro feed lists this player without registration or team history yet.</p>
+          <p class="callout">No registration or team history is available in this stored DPC profile.</p>
         {/if}
       {:else}
         <StatePanel title="No professional profile" message="This player is not listed in the Dota Pro Circuit player feed. The profile comes from Steam." />
@@ -174,6 +183,9 @@
   h3 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 600; letter-spacing: -.1px; margin: 24px 0 10px; }
   h3 small { font-weight: 500; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-subtle); }
   .table-scroll + h3 { margin-top: 28px; }
+  .date-context, .event-label { display: block; font-size: 11px; font-weight: 400; line-height: 1.5; color: var(--muted); }
+  .date-context { margin-top: 4px; }
+  .event-label { margin-bottom: 4px; }
   .date, .num { white-space: nowrap; } .num { text-align: right; } td.date { color: var(--muted); }
   .hint { margin: 8px 0 0; color: var(--text-subtle); font-size: 12px; }
   .unavailable { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }

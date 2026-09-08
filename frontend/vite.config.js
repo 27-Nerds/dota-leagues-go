@@ -9,7 +9,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      output: { entryFileNames: 'build/bundle.js', chunkFileNames: 'build/[name]-[hash].js', assetFileNames: 'build/[name][extname]' }
+      output: { entryFileNames: 'build/bundle-[hash].js', chunkFileNames: 'build/[name]-[hash].js', assetFileNames: 'build/[name]-[hash][extname]' }
     }
   }
 });
