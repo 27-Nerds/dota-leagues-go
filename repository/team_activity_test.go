@@ -20,35 +20,57 @@ func (f *activityDB) Query(ctx context.Context, _ string, _ map[string]any, out 
 }
 
 func TestCompetitiveActivityCacheExpiryAndFailure(t *testing.T) {
-	now := time.Now()
-	calls := 0
-	fail := false
-	conn := &activityDB{query: func(_ context.Context, out any) error {
-		calls++
-		if fail {
-			return errors.New("database unavailable")
+	synctest.Test(t, func(t *testing.T) {
+		calls := 0
+		fail := false
+		gate := make(chan struct{})
+		close(gate)
+		conn := &activityDB{query: func(ctx context.Context, out any) error {
+			calls++
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			if fail {
+				return errors.New("database unavailable")
+			}
+			*out.(*map[string]teamActivity) = map[string]teamActivity{"1": {LastPlayed: int64(calls), Tier: 2}}
+			return nil
+		}}
+		repo := NewTeamRepository(conn)
+		first, err := repo.competitiveActivity(t.Context(), time.Now())
+		if err != nil {
+			t.Fatal(err)
 		}
-		*out.(*map[string]teamActivity) = map[string]teamActivity{"1": {LastPlayed: int64(calls), Tier: 2}}
-		return nil
-	}}
-	repo := NewTeamRepository(conn)
-	first, err := repo.competitiveActivity(t.Context(), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cached, err := repo.competitiveActivity(t.Context(), now.Add(teamActivityTTL-time.Nanosecond))
-	if err != nil || calls != 1 || cached["1"] != first["1"] {
-		t.Fatalf("cache missed: %v calls=%d", err, calls)
-	}
-	fail = true
-	if _, err := repo.competitiveActivity(t.Context(), now.Add(teamActivityTTL)); err == nil {
-		t.Fatal("refresh failure hidden")
-	}
-	fail = false
-	refreshed, err := repo.competitiveActivity(t.Context(), now.Add(teamActivityTTL))
-	if err != nil || calls != 3 || refreshed["1"].LastPlayed != 3 {
-		t.Fatalf("failed refresh was cached: %v calls=%d", err, calls)
-	}
+		time.Sleep(teamActivityTTL)
+		gate = make(chan struct{})
+		for range 10 {
+			cached, err := repo.competitiveActivity(t.Context(), time.Now())
+			if err != nil || cached["1"] != first["1"] {
+				t.Fatalf("stale snapshot unavailable: %v %v", cached, err)
+			}
+		}
+		synctest.Wait()
+		if calls != 2 {
+			t.Fatalf("refresh calls = %d", calls)
+		}
+		fail = true
+		close(gate)
+		synctest.Wait()
+		cached, err := repo.competitiveActivity(t.Context(), time.Now())
+		if err != nil || cached["1"] != first["1"] || calls != 2 {
+			t.Fatal("failed refresh discarded snapshot or did not back off")
+		}
+		fail = false
+		time.Sleep(teamActivityTTL)
+		_, _ = repo.competitiveActivity(t.Context(), time.Now())
+		synctest.Wait()
+		refreshed, err := repo.competitiveActivity(t.Context(), time.Now())
+		if err != nil || calls != 3 || refreshed["1"].LastPlayed != 3 {
+			t.Fatalf("refresh: %v calls=%d", err, calls)
+		}
+	})
 }
 
 func TestCompetitiveActivityConcurrentRefreshAndCancellation(t *testing.T) {

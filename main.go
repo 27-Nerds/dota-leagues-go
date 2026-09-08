@@ -120,6 +120,9 @@ func run() error {
 	gameRepository := repository.NewGameRepository(db)
 	playerRepository := repository.NewPlayerRepository(db)
 	teamRepository := repository.NewTeamRepository(db)
+	if err := teamRepository.WarmCompetitiveActivity(ctx); err != nil {
+		slog.WarnContext(ctx, "warm team ranking", "error", err)
+	}
 	teamRosterRepository := repository.NewTeamRosterRepository(db)
 	leagueSeriesRepository := repository.NewLeagueSeriesRepository(db)
 	liveGameDetailsRepository := repository.NewLiveGameDetailsRepository(db)

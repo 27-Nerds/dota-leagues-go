@@ -1,4 +1,5 @@
 <script>
+  import { countries } from './lib/countries.js';
   import FilterToolbar from "./FilterToolbar.svelte";
   import SearchField from "./SearchField.svelte";
   import Pagination from "./Pagination.svelte";
@@ -10,9 +11,11 @@
   import { pageOffset } from './lib/routes.js';
   import { countryText, fantasyRoleText, formatMoney } from './lib/constants.js';
   import { playerDisplayName, isListedPro } from './lib/players.js';
-  let players = [];
-  let total = 0;
-  let loading = true;
+  import { takeDirectoryData } from './lib/directory.js';
+  const initial = takeDirectoryData('/player');
+  let players = initial?.results ?? [];
+  let total = initial?.meta.total ?? 0;
+  let loading = !initial;
   let error = '';
   const query = new URLSearchParams(window.location.search);
   let search = query.get('search') || '';
@@ -24,15 +27,6 @@
   let sorting = `${query.get('sort') || 'recommended'}:${query.get('order') || (query.get('sort') === 'name' ? 'asc' : 'desc')}`;
   let requestId = 0;
   let searchTimer;
-  const countries = [];
-  for (let first = 65; first <= 90; first++) {
-    for (let second = 65; second <= 90; second++) {
-      const code = String.fromCharCode(first, second);
-      const name = countryText(code);
-      if (name && !['XA', 'XB', 'ZZ'].includes(code)) countries.push({code, name});
-    }
-  }
-  countries.sort((a, b) => a.name.localeCompare(b.name));
   $: filtered = Boolean(appliedSearch || country || pro || team || sorting !== 'recommended:desc');
   function filters() {
     const [sort, order] = sorting.split(':');
@@ -64,7 +58,7 @@
   function changeFilters() { clearTimeout(searchTimer); appliedSearch = search.trim(); offset = 0; load(); }
   function resetFilters() { search = ''; country = ''; pro = ''; team = ''; sorting = 'recommended:desc'; changeFilters(); }
   const detail = p => [countryText(p.country_code), fantasyRoleText(p.fantasy_role), p.team_id > 0 ? (p.team_name || `Team #${p.team_id}`) : (isListedPro(p) ? 'No team' : '')].filter(Boolean).join(' · ') || (isListedPro(p) ? 'Professional player' : 'Steam profile only');
-  onMount(load);
+  onMount(() => { if (!initial) load(); });
   onDestroy(() => { clearTimeout(searchTimer); ++requestId; });
 </script>
 <svelte:head><title>Dota 2 Players | Profiles &amp; teams</title></svelte:head>

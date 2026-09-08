@@ -2,11 +2,12 @@ package repository
 
 import (
 	"context"
+	"log/slog"
 	"time"
 )
 
-// Competition history may lag by at most this interval. Live games, team
-// profiles and roster changes are deliberately not part of this cache.
+// Refresh competition history after this interval. Requests keep using the last
+// successful snapshot during refreshes or outages. Live games are never cached.
 const teamActivityTTL = 30 * time.Second
 
 type teamActivity struct {
@@ -25,21 +26,29 @@ const teamActivityQuery = `RETURN MERGE(
             RETURN { [TO_STRING(teamID)]: { lastPlayed, tier } }
 )`
 
-// A single refresh serves concurrent requests. Waiters can cancel independently;
-// a failed/canceled refresh is never cached and releases them to retry.
+// WarmCompetitiveActivity prepares the ranking before HTTP starts accepting requests.
+func (tr *TeamRepository) WarmCompetitiveActivity(ctx context.Context) error {
+	_, err := tr.competitiveActivity(ctx, time.Now())
+	return err
+}
+
+// Cold callers share a refresh; warm callers never wait for an expired snapshot.
 func (tr *TeamRepository) competitiveActivity(ctx context.Context, now time.Time) (map[string]teamActivity, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		tr.activityMu.Lock()
-		if tr.activity != nil && now.Before(tr.activityUntil) {
-			activity := tr.activity
+		cached := tr.activity
+		if cached != nil && now.Before(tr.activityUntil) {
 			tr.activityMu.Unlock()
-			return activity, nil
+			return cached, nil
 		}
 		if pending := tr.activityLoading; pending != nil {
 			tr.activityMu.Unlock()
+			if cached != nil {
+				return cached, nil
+			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -50,23 +59,33 @@ func (tr *TeamRepository) competitiveActivity(ctx context.Context, now time.Time
 		pending := make(chan struct{})
 		tr.activityLoading = pending
 		tr.activityMu.Unlock()
-
-		activity := map[string]teamActivity{}
-		queryCtx, cancel := context.WithTimeout(ctx, dbTimeout)
-		_, err := tr.Conn.Query(queryCtx, teamActivityQuery, map[string]any{
-			"now": now.Unix(), "recentSince": now.Add(-90 * 24 * time.Hour).Unix(),
-		}, &activity)
-		cancel()
-
-		tr.activityMu.Lock()
-		if err == nil {
-			tr.activity = activity
-			// Expire relative to the snapshot time, not completion of a slow query.
-			tr.activityUntil = now.Add(teamActivityTTL)
+		if cached != nil {
+			// A browser disconnect must not cancel a refresh shared by other visitors.
+			go func() { _, _ = tr.refreshActivity(context.WithoutCancel(ctx), now, pending) }()
+			return cached, nil
 		}
-		tr.activityLoading = nil
-		close(pending)
-		tr.activityMu.Unlock()
-		return activity, err
+		return tr.refreshActivity(ctx, now, pending)
 	}
+}
+
+func (tr *TeamRepository) refreshActivity(ctx context.Context, now time.Time, pending chan struct{}) (map[string]teamActivity, error) {
+	activity := map[string]teamActivity{}
+	queryCtx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	_, err := tr.Conn.Query(queryCtx, teamActivityQuery, map[string]any{
+		"now": now.Unix(), "recentSince": now.Add(-90 * 24 * time.Hour).Unix(),
+	}, &activity)
+	tr.activityMu.Lock()
+	if err == nil {
+		tr.activity = activity
+	}
+	// Back off after failures too, retaining the last successful snapshot.
+	tr.activityUntil = time.Now().Add(teamActivityTTL)
+	tr.activityLoading = nil
+	close(pending)
+	tr.activityMu.Unlock()
+	if err != nil {
+		slog.WarnContext(ctx, "refresh team competitive activity", "error", err)
+	}
+	return activity, err
 }

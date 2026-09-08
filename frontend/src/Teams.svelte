@@ -1,4 +1,5 @@
 <script>
+  import { countries } from './lib/countries.js';
   import FilterToolbar from "./FilterToolbar.svelte";
   import SearchField from "./SearchField.svelte";
   import Pagination from "./Pagination.svelte";
@@ -9,9 +10,11 @@
   import { regionText, countryText, teamLogo } from './lib/constants.js';
   import EntityImage from './EntityImage.svelte';
   import StatePanel from './StatePanel.svelte';
-  let teams = [];
-  let total = 0;
-  let loading = true;
+  import { takeDirectoryData } from './lib/directory.js';
+  const initial = takeDirectoryData('/team');
+  let teams = initial?.results ?? [];
+  let total = initial?.meta.total ?? 0;
+  let loading = !initial;
   let error = '';
   let search = new URLSearchParams(window.location.search).get('search') || '';
   let appliedSearch = search.trim();
@@ -24,15 +27,6 @@
   let active = query.get('active') === 'true';
   let activeDays = query.get('active_days') || '90';
   let sorting = `${query.get('sort') || 'recommended'}:${query.get('order') || (query.get('sort') === 'name' ? 'asc' : 'desc')}`;
-  const countries = [];
-  for (let first = 65; first <= 90; first++) {
-    for (let second = 65; second <= 90; second++) {
-      const code = String.fromCharCode(first, second);
-      const name = countryText(code);
-      if (name && !['XA', 'XB', 'ZZ'].includes(code)) countries.push({code, name});
-    }
-  }
-  countries.sort((a, b) => a.name.localeCompare(b.name));
   function filters() {
     const [sort, order] = sorting.split(':');
     return {pro: pro || undefined, search: appliedSearch || undefined, country: country || undefined, active: active || undefined, active_days: active ? activeDays : undefined, sort, order};
@@ -75,7 +69,7 @@
     search = ''; country = ''; pro = ''; active = false; activeDays = '90'; sorting = 'recommended:desc';
     changeFilters();
   }
-  onMount(load);
+  onMount(() => { if (!initial) load(); });
   onDestroy(() => { clearTimeout(searchTimer); ++requestId; });
 </script>
 <svelte:head><title>Dota 2 Teams | Rosters &amp; results</title></svelte:head>

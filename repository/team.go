@@ -138,7 +138,7 @@ FOR d IN teams
     FILTER !@activeOnly || lastActivity >= @activeSince
     SORT ` + sort + `
     LIMIT @offset, @limit
-    RETURN d`
+    RETURN KEEP(d, "team_id", "name", "tag", "country_code", "region", "pro", "wins")`
 	now := time.Now()
 	days := filter.ActiveDays
 	if days < 1 || days > 3650 {

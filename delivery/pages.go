@@ -4,6 +4,7 @@ import (
 	"bytes"
 	appError "dota_league/error"
 	"dota_league/model"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -26,6 +27,7 @@ type pageContent struct {
 	NoIndex                       bool
 	Entity                        schemaNode
 	StructuredData                template.JS
+	DirectoryData                 template.JS
 	AnalyticsID                   string
 	Links                         []pageLink
 	Paragraphs                    []string
@@ -93,6 +95,7 @@ var pageHead = template.Must(template.New("head").Parse(`<title>{{.Title}}</titl
 <meta property="og:title" content="{{.Title}}">
 <meta property="og:description" content="{{.Description}}">
 <meta property="og:url" content="{{.Canonical}}">
+{{if .DirectoryData}}<script id="directory-data" type="application/json">{{.DirectoryData}}</script>{{end}}
 <script type="application/ld+json">{{.StructuredData}}</script>
 {{if .AnalyticsID}}<script async src="https://www.googletagmanager.com/gtag/js?id={{.AnalyticsID}}"></script>
 <script>
@@ -229,6 +232,10 @@ func (p *pagesDelivery) page(c echo.Context) error {
 		var total int64
 		rows, total, err = p.teams.GetAll(c.Request().Context(), offset, 100, filter)
 		if err == nil {
+			data.DirectoryData, err = directoryJSON(c, teamDirectory(rows), total)
+			if err != nil {
+				return err
+			}
 			for _, team := range rows {
 				name := team.Name
 				if name == "" {
@@ -332,6 +339,10 @@ func (p *pagesDelivery) page(c echo.Context) error {
 		var total int64
 		rows, total, err = p.players.GetAll(c.Request().Context(), offset, 100, filter)
 		if err == nil {
+			data.DirectoryData, err = directoryJSON(c, rows, total)
+			if err != nil {
+				return err
+			}
 			for i := range rows {
 				data.Links = append(data.Links, pageLink{fmt.Sprintf("/player/%d", rows[i].ID), playerDisplayName(&rows[i])})
 			}
@@ -598,4 +609,13 @@ func (p *pagesDelivery) errorPage(c echo.Context, status int) error {
 		return c.NoContent(status)
 	}
 	return c.HTML(status, body.String())
+}
+
+// encoding/json escapes HTML characters so names cannot close the script element.
+func directoryJSON(c echo.Context, rows any, total int64) (template.JS, error) {
+	encoded, err := json.Marshal(map[string]any{
+		"path": c.Request().URL.Path, "search": c.Request().URL.RawQuery,
+		"results": rows, "meta": map[string]any{"total": total},
+	})
+	return template.JS(encoded), err
 }

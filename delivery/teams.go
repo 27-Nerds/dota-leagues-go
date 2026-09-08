@@ -2,6 +2,7 @@ package delivery
 
 import (
 	e "dota_league/error"
+	"dota_league/model"
 	"log/slog"
 	"net/http"
 
@@ -38,7 +39,7 @@ func (td *TeamsDelivery) getAll(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, response{
 		Meta:    meta,
-		Results: teamsFromDB,
+		Results: teamDirectory(teamsFromDB),
 	})
 }
 
@@ -54,4 +55,23 @@ func (td *TeamsDelivery) getOne(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, team)
+}
+
+// Directory cards do not need roster or tournament-history payloads.
+type teamDirectoryEntry struct {
+	ID          int    `json:"team_id"`
+	Name        string `json:"name"`
+	Tag         string `json:"tag"`
+	CountryCode string `json:"country_code"`
+	Region      int    `json:"region"`
+	Pro         bool   `json:"pro"`
+	Wins        int    `json:"wins"`
+}
+
+func teamDirectory(teams []model.Team) []teamDirectoryEntry {
+	rows := make([]teamDirectoryEntry, 0, len(teams))
+	for _, t := range teams {
+		rows = append(rows, teamDirectoryEntry{t.ID, t.Name, t.Tag, t.CountryCode, t.Region, t.Pro, t.Wins})
+	}
+	return rows
 }
